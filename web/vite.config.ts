@@ -17,6 +17,15 @@ export default defineConfig(({ mode }) => {
   const platformPort = Number(process.env.PORT);
   const usePlatformPort = Number.isFinite(platformPort) && platformPort > 0;
 
+  /** Vite blocks unknown `Host` headers unless listed here (e.g. Render public URL). */
+  const allowedHosts = [
+    "localhost",
+    ".localhost",
+    "127.0.0.1",
+    "route-solver-cli.onrender.com",
+    ".onrender.com",
+  ];
+
   return {
     plugins: [react()],
     resolve: {
@@ -28,6 +37,7 @@ export default defineConfig(({ mode }) => {
       host: true,
       port: usePlatformPort ? platformPort : 5173,
       strictPort: usePlatformPort,
+      allowedHosts,
       fs: {
         allow: [path.resolve(__dirname), path.resolve(__dirname, "..")],
       },
@@ -44,6 +54,7 @@ export default defineConfig(({ mode }) => {
       host: true,
       port: usePlatformPort ? platformPort : 4173,
       strictPort: usePlatformPort,
+      allowedHosts,
     },
   };
 });
