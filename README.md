@@ -130,7 +130,7 @@ If you see **`vite: not found`** (exit 127), it is almost always because:
 
 `render:build` runs root install, **`web/` install** (so `vite` exists), then `vite build`.
 
-If you use a **Web Service** instead of a static site, set the build command the same way, then set the start command to something that serves `web/dist` (for example install `serve` and run `npx serve web/dist -s -l $PORT`), or run `cd web && npx vite preview --host 0.0.0.0 --port $PORT` only if `web/node_modules` is present from the build step and dev dependencies were not pruned.
+If you use a **Web Service** instead of a static site, set the build command the same way, then set the start command to something that serves `web/dist` (for example install `serve` and run `npx serve web/dist -s -l $PORT`), or run `npm run web:preview` / `npm run web:dev` after `web:install` — **`web/vite.config.ts` binds `host: true` (all interfaces) and uses `process.env.PORT` when set**, which is what Render expects for health checks. Prefer a **Static Site** + `web/dist` when you do not need a long-lived Node process.
 
 ## npm scripts (root)
 

@@ -13,6 +13,10 @@ export default defineConfig(({ mode }) => {
     env.VITE_API_BASE_URL ||
     DEFAULT_STAR_DELIVERY_REST_BASE;
 
+  /** Render (and similar) set `PORT`; bind `0.0.0.0` so health checks succeed. */
+  const platformPort = Number(process.env.PORT);
+  const usePlatformPort = Number.isFinite(platformPort) && platformPort > 0;
+
   return {
     plugins: [react()],
     resolve: {
@@ -21,7 +25,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      port: 5173,
+      host: true,
+      port: usePlatformPort ? platformPort : 5173,
+      strictPort: usePlatformPort,
       fs: {
         allow: [path.resolve(__dirname), path.resolve(__dirname, "..")],
       },
@@ -33,6 +39,11 @@ export default defineConfig(({ mode }) => {
           rewrite: (p) => p.replace(/^\/__api/, "") || "/",
         },
       },
+    },
+    preview: {
+      host: true,
+      port: usePlatformPort ? platformPort : 4173,
+      strictPort: usePlatformPort,
     },
   };
 });
