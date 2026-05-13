@@ -12,6 +12,9 @@
  *      TSP_SCHED_LOG_DIR
  *      TSP_SCHED_SUBMIT=1 → forward --submit
  *      TSP_SCHED_CALCULATE_COAXIUM=1 → forward --calculate-coaxium
+ *
+ * Windows: avoid unquoted `--log-dir=C:\tsp_logs` — `\t` can become a tab. Use
+ * `--log-dir=C:/tsp_logs`, `--log-dir 'C:\\tsp_logs'`, or set `TSP_SCHED_LOG_DIR`.
  */
 import { spawn } from "node:child_process";
 import { existsSync, mkdirSync, createWriteStream } from "node:fs";
@@ -336,6 +339,8 @@ async function main(): Promise<number> {
     console.error("Warning: extra positional arguments ignored (only first is used as log-dir if --log-dir is omitted).");
   }
   const logDir = isAbsolute(logDirRaw) ? resolve(logDirRaw) : resolve(PKG_ROOT, logDirRaw);
+
+  console.log(`[schedule] resolved log directory: ${logDir}`);
 
   const cliPath = resolve(String(values["cli-path"] ?? "").trim() || DEFAULT_CLI);
 

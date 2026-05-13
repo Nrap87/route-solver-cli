@@ -7,7 +7,7 @@ import { heldKarpGen } from './heldKarp.js'
 import { MinHeap } from './heap.js'
 import { orienteeringDPCandidates } from './orienteeringDP.js'
 
-const TIMEOUT_MS = 5 * 60 * 1000
+const TIMEOUT_MS = 15 * 60 * 1000
 
 /**
  * IMPORTANT:
