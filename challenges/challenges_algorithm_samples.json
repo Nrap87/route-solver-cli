@@ -1,0 +1,161 @@
+[
+  {
+    "ChallengeId": 201,
+    "ChallengeName": "Algorithm sample 201",
+    "StartPlanetId": "152",
+    "MandatoryPlanets": [
+      { "PlanetId": 60, "Name": "Ithor" },
+      { "PlanetId": 14, "Name": "Trellen" },
+      { "PlanetId": 19, "Name": "Constancia" }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 202,
+    "ChallengeName": "Algorithm sample 202",
+    "StartPlanetId": "152",
+    "MandatoryPlanets": [
+      { "PlanetId": 60, "Name": "Ithor" },
+      { "PlanetId": 14, "Name": "Trellen" },
+      { "PlanetId": 19, "Name": "Constancia" },
+      { "PlanetId": 1, "Name": "" },
+      { "PlanetId": 3, "Name": "" },
+      { "PlanetId": 10, "Name": "" },
+      { "PlanetId": 31, "Name": "" },
+      { "PlanetId": 30, "Name": "" }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 203,
+    "ChallengeName": "Algorithm sample 203",
+    "StartPlanetId": "152",
+    "MandatoryPlanets": [
+      { "PlanetId": 60, "Name": "Ithor" },
+      { "PlanetId": 14, "Name": "Trellen" },
+      { "PlanetId": 19, "Name": "Constancia" },
+      { "PlanetId": 1, "Name": "" },
+      { "PlanetId": 3, "Name": "" },
+      { "PlanetId": 10, "Name": "" },
+      { "PlanetId": 31, "Name": "" },
+      { "PlanetId": 30, "Name": "" },
+      { "PlanetId": 29, "Name": "" }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 204,
+    "ChallengeName": "Algorithm sample 204",
+    "StartPlanetId": "152",
+    "MandatoryPlanets": [
+      { "PlanetId": 60, "Name": "Ithor" },
+      { "PlanetId": 14, "Name": "Trellen" },
+      { "PlanetId": 19, "Name": "Constancia" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 43, "Name": "Tirahnn" },
+      { "PlanetId": 9, "Name": "Salliche" },
+      { "PlanetId": 189, "Name": "Chardaan" }
+    ],
+    "BonusPlanets": [
+      { "PlanetId": 52, "Name": "Kinyen", "Bonus": 300 },
+      { "PlanetId": 18, "Name": "", "Bonus": 400 },
+      { "PlanetId": 154, "Name": "Terminus", "Bonus": 600 },
+      { "PlanetId": 86, "Name": "Mustafar", "Bonus": 50 },
+      { "PlanetId": 90, "Name": "Mandalore", "Bonus": 100 }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 205,
+    "ChallengeName": "Algorithm sample 205",
+    "StartPlanetId": "152",
+    "MandatoryPlanets": [
+      { "PlanetId": 60, "Name": "Ithor" },
+      { "PlanetId": 14, "Name": "Trellen" },
+      { "PlanetId": 19, "Name": "Constancia" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 43, "Name": "Tirahnn" },
+      { "PlanetId": 9, "Name": "Salliche" },
+      { "PlanetId": 189, "Name": "Chardaan" }
+    ],
+    "BonusPlanets": [
+      { "PlanetId": 52, "Name": "Kinyen", "Bonus": 300 },
+      { "PlanetId": 154, "Name": "Terminus", "Bonus": 600 },
+      { "PlanetId": 18, "Name": "", "Bonus": 400 },
+      { "PlanetId": 191, "Name": "Atravis", "Bonus": 50 },
+      { "PlanetId": 86, "Name": "Mustafar", "Bonus": 50 },
+      { "PlanetId": 148, "Name": "Zygerria", "Bonus": 400 },
+      { "PlanetId": 106, "Name": "Malachor", "Bonus": 400 },
+      { "PlanetId": 161, "Name": "Cantonica", "Bonus": 400 }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 206,
+    "ChallengeName": "Algorithm sample 206",
+    "StartPlanetId": "152",
+    "MandatoryPlanets": [
+      { "PlanetId": 60, "Name": "Ithor" },
+      { "PlanetId": 14, "Name": "Trellen" },
+      { "PlanetId": 19, "Name": "Constancia" },
+      { "PlanetId": 1, "Name": "" },
+      { "PlanetId": 3, "Name": "" },
+      { "PlanetId": 10, "Name": "" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 43, "Name": "Tirahnn" },
+      { "PlanetId": 9, "Name": "Salliche" },
+      { "PlanetId": 189, "Name": "Chardaan" }
+    ],
+    "BonusPlanets": [
+      { "PlanetId": 52, "Name": "Kinyen", "Bonus": 300 },
+      { "PlanetId": 154, "Name": "Terminus", "Bonus": 600 },
+      { "PlanetId": 18, "Name": "", "Bonus": 400 },
+      { "PlanetId": 191, "Name": "Atravis", "Bonus": 50 },
+      { "PlanetId": 86, "Name": "Mustafar", "Bonus": 50 },
+      { "PlanetId": 148, "Name": "Zygerria", "Bonus": 400 },
+      { "PlanetId": 106, "Name": "Malachor", "Bonus": 400 },
+      { "PlanetId": 161, "Name": "Cantonica", "Bonus": 400 },
+      { "PlanetId": 140, "Name": "Bonadan", "Bonus": 200 },
+      { "PlanetId": 104, "Name": "Dantooine", "Bonus": 400 },
+      { "PlanetId": 90, "Name": "Mandalore", "Bonus": 100 },
+      { "PlanetId": 125, "Name": "", "Bonus": 250 }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 207,
+    "ChallengeName": "Algorithm sample 207",
+    "StartPlanetId": "152",
+    "MandatoryPlanets": [
+      { "PlanetId": 60, "Name": "Ithor" },
+      { "PlanetId": 14, "Name": "Trellen" },
+      { "PlanetId": 19, "Name": "Constancia" },
+      { "PlanetId": 1, "Name": "" },
+      { "PlanetId": 3, "Name": "" },
+      { "PlanetId": 10, "Name": "" },
+      { "PlanetId": 31, "Name": "" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 43, "Name": "Tirahnn" },
+      { "PlanetId": 9, "Name": "Salliche" },
+      { "PlanetId": 189, "Name": "Chardaan" },
+      { "PlanetId": 52, "Name": "Kinyen" }
+    ],
+    "BonusPlanets": [
+      { "PlanetId": 154, "Name": "Terminus", "Bonus": 700 },
+      { "PlanetId": 18, "Name": "", "Bonus": 400 },
+      { "PlanetId": 191, "Name": "Atravis", "Bonus": 100 },
+      { "PlanetId": 86, "Name": "Mustafar", "Bonus": 200 },
+      { "PlanetId": 148, "Name": "Zygerria", "Bonus": 500 },
+      { "PlanetId": 106, "Name": "Malachor", "Bonus": 500 },
+      { "PlanetId": 161, "Name": "Cantonica", "Bonus": 500 },
+      { "PlanetId": 140, "Name": "Bonadan", "Bonus": 250 },
+      { "PlanetId": 104, "Name": "Dantooine", "Bonus": 500 },
+      { "PlanetId": 90, "Name": "Mandalore", "Bonus": 150 }
+    ],
+    "IsFinished": false
+  }
+]

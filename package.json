@@ -1,0 +1,23 @@
+{
+  "name": "route-solver-cli",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Held–Karp route solver (solver aligned with majos95/route-solver-web) + Star Delivery API or local JSON.",
+  "scripts": {
+    "build": "tsc",
+    "solve": "node dist/cli.js",
+    "tsp-cron": "node ./scripts/run-cron.mjs",
+    "web:dev": "npm run dev --prefix web",
+    "web:build": "npm run build --prefix web",
+    "web:preview": "npm run preview --prefix web"
+  },
+  "engines": {
+    "node": ">=18.19.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

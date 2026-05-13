@@ -1,0 +1,147 @@
+[
+  {
+      "ChallengeId": 103,
+      "ChallengeName": "This Is The Way: Direct Connection",
+      "StartPlanetId": "152",
+      "MandatoryPlanets": [
+          {
+              "PlanetId": 60,
+              "Name": "Ithor"
+          },
+          {
+              "PlanetId": 14,
+              "Name": "Trellen"
+          },
+          {
+              "PlanetId": 19,
+              "Name": "Constancia"
+          }
+      ],
+      "IsFinished": true
+  },
+  {
+      "ChallengeId": 104,
+      "ChallengeName": "This Is The Way: Fury Road",
+      "StartPlanetId": "152",
+      "MandatoryPlanets": [
+          {
+              "PlanetId": 60,
+              "Name": "Ithor"
+          },
+          {
+              "PlanetId": 14,
+              "Name": "Trellen"
+          },
+          {
+              "PlanetId": 19,
+              "Name": "Constancia"
+          }
+      ],
+      "ForbiddenPlanets": [
+          {
+              "PlanetId": 43,
+              "Name": "Tirahnn"
+          },
+          {
+              "PlanetId": 9,
+              "Name": "Salliche"
+          },
+          {
+              "PlanetId": 189,
+              "Name": "Chardaan"
+          }
+      ],
+      "IsFinished": true
+  },
+  {
+      "ChallengeId": 105,
+      "ChallengeName": "This Is The Way: Open Road",
+      "StartPlanetId": "152",
+      "MandatoryPlanets": [
+          {
+              "PlanetId": 60,
+              "Name": "Ithor"
+          },
+          {
+              "PlanetId": 14,
+              "Name": "Trellen"
+          },
+          {
+              "PlanetId": 19,
+              "Name": "Constancia"
+          }
+      ],
+      "ForbiddenPlanets": [
+          {
+              "PlanetId": 43,
+              "Name": "Tirahnn"
+          },
+          {
+              "PlanetId": 9,
+              "Name": "Salliche"
+          },
+          {
+              "PlanetId": 189,
+              "Name": "Chardaan"
+          }
+      ],
+      "BonusPlanets": [
+          {
+              "PlanetId": 52,
+              "Name": "Kinyen",
+              "Bonus": 300
+          },
+          {
+              "PlanetId": 154,
+              "Name": "Terminus",
+              "Bonus": 600
+          },
+          {
+              "PlanetId": 187,
+              "Name": "Kira",
+              "Bonus": 400
+          },
+          {
+              "PlanetId": 191,
+              "Name": "Atravis",
+              "Bonus": 50
+          },
+          {
+              "PlanetId": 86,
+              "Name": "Mustafar",
+              "Bonus": 50
+          },
+          {
+              "PlanetId": 148,
+              "Name": "Zygerria",
+              "Bonus": 400
+          },
+          {
+              "PlanetId": 106,
+              "Name": "Malachor",
+              "Bonus": 400
+          },
+          {
+              "PlanetId": 161,
+              "Name": "Cantonica",
+              "Bonus": 400
+          },
+          {
+              "PlanetId": 140,
+              "Name": "Bonadan",
+              "Bonus": 200
+          },
+          {
+              "PlanetId": 104,
+              "Name": "Dantooine",
+              "Bonus": 400
+          },
+          {
+              "PlanetId": 90,
+              "Name": "Mandalore",
+              "Bonus": 100
+          }
+      ],
+      "IsFinished": true
+  }
+]

@@ -1,0 +1,64 @@
+[
+  {
+    "ChallengeId": 100,
+    "ChallengeName": "Challenge 100",
+    "StartPlanetId": "30",
+    "MandatoryPlanets": [
+      { "PlanetId": 174, "Name": "" },
+      { "PlanetId": 153, "Name": "" },
+      { "PlanetId": 4, "Name": "" },
+      { "PlanetId": 102, "Name": "" },
+      { "PlanetId": 18, "Name": "" },
+      { "PlanetId": 155, "Name": "" },
+      { "PlanetId": 55, "Name": "" }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 101,
+    "ChallengeName": "Challenge 101",
+    "StartPlanetId": "30",
+    "MandatoryPlanets": [
+      { "PlanetId": 174, "Name": "" },
+      { "PlanetId": 153, "Name": "" },
+      { "PlanetId": 4, "Name": "" },
+      { "PlanetId": 102, "Name": "" },
+      { "PlanetId": 18, "Name": "" },
+      { "PlanetId": 155, "Name": "" },
+      { "PlanetId": 55, "Name": "" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 52, "Name": "Kinyen" },
+      { "PlanetId": 183, "Name": "" },
+      { "PlanetId": 23, "Name": "" },
+      { "PlanetId": 78, "Name": "" }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 102,
+    "ChallengeName": "Challenge 102",
+    "StartPlanetId": "30",
+    "MandatoryPlanets": [
+      { "PlanetId": 174, "Name": "" },
+      { "PlanetId": 153, "Name": "" },
+      { "PlanetId": 4, "Name": "" },
+      { "PlanetId": 102, "Name": "" },
+      { "PlanetId": 18, "Name": "" },
+      { "PlanetId": 155, "Name": "" },
+      { "PlanetId": 55, "Name": "" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 52, "Name": "Kinyen" },
+      { "PlanetId": 183, "Name": "" },
+      { "PlanetId": 23, "Name": "" },
+      { "PlanetId": 78, "Name": "" }
+    ],
+    "BonusPlanets": [
+      { "PlanetId": 80, "Name": "", "Bonus": 450 },
+      { "PlanetId": 154, "Name": "Terminus", "Bonus": 200 },
+      { "PlanetId": 137, "Name": "", "Bonus": 100 }
+    ],
+    "IsFinished": false
+  }
+]

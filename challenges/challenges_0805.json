@@ -1,0 +1,49 @@
+[
+  {
+    "ChallengeId": 84,
+    "ChallengeName": "Challenge 84",
+    "StartPlanetId": "10",
+    "MandatoryPlanets": [
+      { "PlanetId": 101, "Name": "" },
+      { "PlanetId": 174, "Name": "" }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 85,
+    "ChallengeName": "Challenge 85",
+    "StartPlanetId": "10",
+    "MandatoryPlanets": [
+      { "PlanetId": 101, "Name": "" },
+      { "PlanetId": 174, "Name": "" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 29, "Name": "" },
+      { "PlanetId": 45, "Name": "" },
+      { "PlanetId": 157, "Name": "" }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 86,
+    "ChallengeName": "Challenge 86",
+    "StartPlanetId": "10",
+    "MandatoryPlanets": [
+      { "PlanetId": 101, "Name": "" },
+      { "PlanetId": 174, "Name": "" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 29, "Name": "" },
+      { "PlanetId": 45, "Name": "" },
+      { "PlanetId": 157, "Name": "" }
+    ],
+    "BonusPlanets": [
+      { "PlanetId": 33, "Name": "", "Bonus": 150 },
+      { "PlanetId": 53, "Name": "", "Bonus": 200 },
+      { "PlanetId": 54, "Name": "", "Bonus": 150 },
+      { "PlanetId": 182, "Name": "", "Bonus": 200 },
+      { "PlanetId": 183, "Name": "", "Bonus": 100 }
+    ],
+    "IsFinished": false
+  }
+]

@@ -1,0 +1,13 @@
+start 2026-05-12T23:12:33.977Z
+cwd: C:\Users\PintoN\OneDrive - Version 1\Documents\Version 1\AI\AI Champion\Cursor\Projects\route-solver-cli
+cmd: c:\Program Files\cursor\resources\app\resources\helpers\node.exe "C:\\Users\\PintoN\\OneDrive - Version 1\\Documents\\Version 1\\AI\\AI Champion\\Cursor\\Projects\\route-solver-cli\\dist\\cli.js" --daily-api
+
+Error: API requires PlayerGuid and PlayerEmail (--player-guid / --player-email or env vars).
+    at apiConnection (file:///C:/Users/PintoN/OneDrive%20-%20Version%201/Documents/Version%201/AI/AI%20Champion/Cursor/Projects/route-solver-cli/dist/api.js:11:15)
+    at main (file:///C:/Users/PintoN/OneDrive%20-%20Version%201/Documents/Version%201/AI/AI%20Champion/Cursor/Projects/route-solver-cli/dist/cli.js:181:19)
+    at file:///C:/Users/PintoN/OneDrive%20-%20Version%201/Documents/Version%201/AI/AI%20Champion/Cursor/Projects/route-solver-cli/dist/cli.js:250:1
+    at ModuleJob.run (node:internal/modules/esm/module_job:343:25)
+    at async onImport.tracePromise.__proto__ (node:internal/modules/esm/loader:665:26)
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:117:5)
+
+end 2026-05-12T23:12:34.242Z exit=1

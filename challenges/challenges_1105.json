@@ -1,0 +1,62 @@
+[
+  {
+    "ChallengeId": 97,
+    "ChallengeName": "Challenge 97",
+    "StartPlanetId": "25",
+    "MandatoryPlanets": [
+      { "PlanetId": 3, "Name": "" },
+      { "PlanetId": 33, "Name": "" },
+      { "PlanetId": 49, "Name": "" },
+      { "PlanetId": 62, "Name": "" },
+      { "PlanetId": 88, "Name": "" },
+      { "PlanetId": 175, "Name": "" }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 98,
+    "ChallengeName": "Challenge 98",
+    "StartPlanetId": "25",
+    "MandatoryPlanets": [
+      { "PlanetId": 3, "Name": "" },
+      { "PlanetId": 33, "Name": "" },
+      { "PlanetId": 49, "Name": "" },
+      { "PlanetId": 62, "Name": "" },
+      { "PlanetId": 88, "Name": "" },
+      { "PlanetId": 175, "Name": "" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 1, "Name": "" },
+      { "PlanetId": 40, "Name": "" },
+      { "PlanetId": 51, "Name": "" },
+      { "PlanetId": 179, "Name": "" }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 99,
+    "ChallengeName": "Challenge 99",
+    "StartPlanetId": "25",
+    "MandatoryPlanets": [
+      { "PlanetId": 3, "Name": "" },
+      { "PlanetId": 33, "Name": "" },
+      { "PlanetId": 49, "Name": "" },
+      { "PlanetId": 62, "Name": "" },
+      { "PlanetId": 88, "Name": "" },
+      { "PlanetId": 175, "Name": "" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 1, "Name": "" },
+      { "PlanetId": 40, "Name": "" },
+      { "PlanetId": 51, "Name": "" },
+      { "PlanetId": 179, "Name": "" }
+    ],
+    "BonusPlanets": [
+      { "PlanetId": 43, "Name": "Tirahnn", "Bonus": 100 },
+      { "PlanetId": 44, "Name": "", "Bonus": 100 },
+      { "PlanetId": 172, "Name": "", "Bonus": 400 },
+      { "PlanetId": 189, "Name": "Chardaan", "Bonus": 300 }
+    ],
+    "IsFinished": false
+  }
+]

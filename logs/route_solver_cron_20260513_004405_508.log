@@ -1,0 +1,27 @@
+start 2026-05-12T23:44:05.511Z
+cwd: C:\Users\PintoN\OneDrive - Version 1\Documents\Version 1\AI\AI Champion\Cursor\Projects\route-solver-cli
+cmd: C:\Program Files\nodejs\node.exe "C:\\Users\\PintoN\\OneDrive - Version 1\\Documents\\Version 1\\AI\\AI Champion\\Cursor\\Projects\\route-solver-cli\\dist\\cli.js" --daily-api
+
+Fetching challenges and map data...
+Pending: Live Long and Prosper: Highway Galore, Live Long and Prosper: Closed for Renovations, Live Long and Prosper: Fuel Edge
+
+Solving [#100 Level 1] "Live Long and Prosper: Highway Galore"...
+  → effectiveFuel=2818.2921430433776 (60ms)
+  Gross fuel     : 2818.2921430433776
+  Bonus collected: 0
+  Route (27 planets): Loronar (30) → Tinnel (31) → Nubia (10) → Corellia (3) → Kuat (4) → Khomm (18) → Abregado (13) → Giju (35) → Ghorman (23) → Thyferra (36) → Yag'Dhul (37) → Roona (45) → Kinyen (52) → Gerrenthum (156) → Tawl (155) → Elrood (102) → Dagobah (85) → Sluis Van (117) → Clak'dor (119) → Eriadu (93) → Uvena (153) → Farstine (174) → Vendaxa (55) → Milagro (184) → Denon (44) → Byblos (29) → Loronar (30)
+
+Solving [#101 Level 2] "Live Long and Prosper: Closed for Renovations"...
+  → effectiveFuel=3005.316042281245 (45ms)
+  Gross fuel     : 3005.316042281245
+  Bonus collected: 0
+  Route (24 planets): Loronar (30) → Tinnel (31) → Nubia (10) → Corellia (3) → Kuat (4) → Khomm (18) → Abregado (13) → Giju (35) → Thyferra (36) → Yag'Dhul (37) → Vondarc (188) → Tawl (155) → Elrood (102) → Dagobah (85) → Sluis Van (117) → Clak'dor (119) → Eriadu (93) → Uvena (153) → Farstine (174) → Vendaxa (55) → Milagro (184) → Denon (44) → Byblos (29) → Loronar (30)
+
+Solving [#102 Level 3] "Live Long and Prosper: Fuel Edge"...
+  → effectiveFuel=2915.4294227646483 (2905ms)
+  Gross fuel     : 3665.4294227646483
+  Bonus collected: 750
+  Route (31 planets): Loronar (30) → Byblos (29) → Denon (44) → Chardaan (189) → Vendaxa (55) → Milagro (184) → New Cov (75) → Mon Gazza (185) → Ryloth (80) → Farstine (174) → Uvena (153) → Eriadu (93) → Clak'dor (119) → Sluis Van (117) → Dagobah (85) → Elrood (102) → Askaj (137) → Terminus (154) → Isde Naha (157) → Tawl (155) → Vondarc (188) → Yag'Dhul (37) → Thyferra (36) → Giju (35) → Abregado (13) → Khomm (18) → Kuat (4) → Corellia (3) → Nubia (10) → Tinnel (31) → Loronar (30)
+
+
+end 2026-05-12T23:44:09.159Z exit=0
