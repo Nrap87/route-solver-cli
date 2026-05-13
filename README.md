@@ -96,15 +96,41 @@ npm install
 npm run dev
 ```
 
+From the repo root you can install web dependencies and run the dev server with:
+
+```bash
+npm run web:install
+npm run web:dev
+```
+
 By default the dev server proxies API calls under **`/__api`** to avoid CORS (see `web/vite.config.ts`). Override the upstream with `VITE_PROXY_TARGET` or `VITE_API_BASE_URL` in `web/.env` if needed.
 
 Production build:
 
 ```bash
+npm run web:install   # once, or if web/package.json changed
 npm run web:build
 ```
 
 The UI loads the map and daily list from Star Delivery (or bundled challenge files), runs the **same** `solve()` as the CLI, and can batch **Calculate Coaxium** / **Submit** for all challenges.
+
+### Deploying the web app (e.g. Render)
+
+If you see **`vite: not found`** (exit 127), it is almost always because:
+
+1. **Only the root `npm install` ran** — `vite` is declared in **`web/package.json`**, so dependencies must be installed there too (`npm install --prefix web`, or use the script below).
+2. **`npm run web:dev` is not a production command** — it starts the Vite *development* server. On Render you normally **build** static assets and host `web/dist`, or run `vite preview` behind a process manager—not `web:dev`.
+
+**Recommended: Render Static Site**
+
+| Setting | Value |
+|--------|--------|
+| Build command | `npm run render:build` |
+| Publish directory | `web/dist` |
+
+`render:build` runs root install, **`web/` install** (so `vite` exists), then `vite build`.
+
+If you use a **Web Service** instead of a static site, set the build command the same way, then set the start command to something that serves `web/dist` (for example install `serve` and run `npx serve web/dist -s -l $PORT`), or run `cd web && npx vite preview --host 0.0.0.0 --port $PORT` only if `web/node_modules` is present from the build step and dev dependencies were not pruned.
 
 ## npm scripts (root)
 
@@ -112,8 +138,10 @@ The UI loads the map and daily list from Star Delivery (or bundled challenge fil
 |--------|-------------|
 | `npm run build` | `tsc` → `dist/` |
 | `npm run solve` | `node dist/cli.js` (pass args after `--`) |
+| `npm run web:install` | `npm install` in `web/` (installs Vite, React, etc.) |
 | `npm run web:dev` | Vite dev server in `web/` |
 | `npm run web:build` | Production build of `web/` |
+| `npm run render:build` | Root + `web/` install, then `web:build` (for Render / CI) |
 | `npm run web:preview` | Preview production build |
 | `npm run tsp-cron` | Cron helper (`scripts/run-cron.mjs`) |
 

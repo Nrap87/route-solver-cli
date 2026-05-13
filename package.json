@@ -9,8 +9,10 @@
     "solve": "node dist/cli.js",
     "tsp-cron": "node ./scripts/run-cron.mjs",
     "web:dev": "npm run dev --prefix web",
+    "web:install": "npm install --prefix web",
     "web:build": "npm run build --prefix web",
-    "web:preview": "npm run preview --prefix web"
+    "web:preview": "npm run preview --prefix web",
+    "render:build": "npm install && npm install --prefix web && npm run web:build"
   },
   "engines": {
     "node": ">=18.19.0"
