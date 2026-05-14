@@ -1,0 +1,53 @@
+[
+  {
+    "ChallengeId": 90,
+    "ChallengeName": "Challenge 90",
+    "StartPlanetId": "90",
+    "MandatoryPlanets": [
+      { "PlanetId": 104, "Name": "" },
+      { "PlanetId": 2, "Name": "" },
+      { "PlanetId": 58, "Name": "" },
+      { "PlanetId": 44, "Name": "" },
+      { "PlanetId": 76, "Name": "" }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 91,
+    "ChallengeName": "Challenge 91",
+    "StartPlanetId": "90",
+    "MandatoryPlanets": [
+      { "PlanetId": 104, "Name": "" },
+      { "PlanetId": 2, "Name": "" },
+      { "PlanetId": 58, "Name": "" },
+      { "PlanetId": 44, "Name": "" },
+      { "PlanetId": 76, "Name": "" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 189, "Name": "" },
+      { "PlanetId": 171, "Name": "" }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 92,
+    "ChallengeName": "Challenge 92",
+    "StartPlanetId": "90",
+    "MandatoryPlanets": [
+      { "PlanetId": 104, "Name": "" },
+      { "PlanetId": 2, "Name": "" },
+      { "PlanetId": 58, "Name": "" },
+      { "PlanetId": 44, "Name": "" },
+      { "PlanetId": 76, "Name": "" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 189, "Name": "" },
+      { "PlanetId": 171, "Name": "" }
+    ],
+    "BonusPlanets": [
+      { "PlanetId": 6, "Name": "Brentaal", "Bonus": 150 },
+      { "PlanetId": 80, "Name": "Ryloth", "Bonus": 450 }
+    ],
+    "IsFinished": false
+  }
+]

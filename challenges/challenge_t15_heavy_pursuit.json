@@ -1,0 +1,19 @@
+[
+  {
+    "ChallengeId": 15,
+    "ChallengeName": "T15: Heavy Pursuit",
+    "StartPlanetId": "90",
+    "MandatoryPlanets": [
+      { "PlanetId": 104, "Name": "Dantooine" },
+      { "PlanetId": 2, "Name": "Alderaan" },
+      { "PlanetId": 58, "Name": "Naboo" },
+      { "PlanetId": 44, "Name": "Denon" },
+      { "PlanetId": 76, "Name": "Gizer" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 189, "Name": "Chardaan" },
+      { "PlanetId": 171, "Name": "Agamar" }
+    ],
+    "IsFinished": false
+  }
+]

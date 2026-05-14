@@ -171,10 +171,12 @@ If you use a **Web Service** instead of a static site, set the build command the
 | `src/adapt.ts` | JSON / API → solver models |
 | `src/challengeDocument.ts` | Challenge list JSON normalization |
 | `src/solver/` | Types, Held–Karp pipeline, `solve()` — see **`src/solver` module reference** below |
-| `challenges/` | Example challenge JSON |
+| `challenges/` | Example challenge JSON; **`challenges/challenges_all with_fuel.json`** adds **`realFuel`** per challenge for solver regression checks |
 | `web/` | Vite + React dashboard |
 
 Test files under `src/solver/__tests__/` use Vitest-style `describe` / `it` / `expect` APIs; they are excluded from the default `tsc` build (add Vitest—or another runner—and a script when you want CI to execute them). Each file is summarized in the **Unit tests** subsection below.
+
+**`realWorld.test.ts`** is driven only by **`challenges/challenges_all with_fuel.json`** and **`realWorld.fixture`**: each row with **`realFuel`** is converted to **`SolveInput`** via **`recordToChallenge`** and **`challengeToSolveInput`**, then **`solve`** must satisfy **`Math.round(effectiveFuel) === Math.round(realFuel)`** (long per-case timeout for heavy instances).
 
 ## `src/solver` module reference
 
@@ -201,7 +203,7 @@ Test files under `src/solver/__tests__/` use Vitest-style `describe` / `it` / `e
 | **`solver.test.ts`** | Vitest coverage for **`buildCostMatrix`**, **`computeAllPairsSP`**, **`heldKarpGen`**, and end-to-end **`solve`** on small hand-crafted maps (discounts, mandatories, bonuses, forbidden nodes). |
 | **`adapters.test.ts`** | Tests **`adaptPlanet`**, **`adaptRoute`**, **`adaptChallenge`**, and **`toPlanetSimple`** against representative API-shaped payloads. |
 | **`realWorld.fixture.ts`** | Static snapshot of **GetPlanetsAndRoutes**–style planets and routes (full game galaxy) used as shared test data. |
-| **`realWorld.test.ts`** | **`solve`** regression tests on that real map: builds `SolveInput` from adapted API data and asserts routes / fuel for specific challenge scenarios. |
+| **`realWorld.test.ts`** | **`solve`** regression on the full **`realWorld.fixture`** galaxy: every challenge in **`challenges/challenges_all with_fuel.json`** that includes **`realFuel`** must match **`Math.round(effectiveFuel)`** (long per-case timeout for heavy instances). |
 
 ## Default REST host
 

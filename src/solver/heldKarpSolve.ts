@@ -51,7 +51,6 @@ const MANDATORY_ONLY_SHORTEST_PATH_FAST_LIMIT = 3
  */
 const MANDATORY_ONLY_INITIAL_BOUND_LIMIT = 8
 
-
 type RealizedRoute = {
   route: number[]
   gross: number
@@ -208,6 +207,226 @@ function realizeOrderingByShortestPathConcat(
     matrix,
     bonusValueByDense,
   })
+}
+
+function shortestPathAvoiding(
+  matrix: CostMatrix,
+  src: number,
+  dst: number,
+  blockedInput: Uint8Array,
+): number[] | null {
+  const { n, data } = matrix
+
+  const blocked = new Uint8Array(blockedInput)
+
+  blocked[src] = 0
+  blocked[dst] = 0
+
+  const dist = new Float64Array(n)
+  dist.fill(Infinity)
+
+  const prev = new Int32Array(n)
+  prev.fill(-1)
+
+  const used = new Uint8Array(n)
+
+  dist[src] = 0
+
+  for (let iter = 0; iter < n; iter++) {
+    let u = -1
+    let best = Infinity
+
+    for (let i = 0; i < n; i++) {
+      if (used[i]) continue
+      if (blocked[i]) continue
+
+      const d = dist[i]
+
+      if (d < best) {
+        best = d
+        u = i
+      }
+    }
+
+    if (u === -1) break
+    if (u === dst) break
+
+    used[u] = 1
+
+    const base = u * n
+
+    for (let v = 0; v < n; v++) {
+      if (used[v]) continue
+      if (blocked[v]) continue
+      if (v === u) continue
+
+      const nd = best + data[base + v]
+
+      if (nd < dist[v]) {
+        dist[v] = nd
+        prev[v] = u
+      }
+    }
+  }
+
+  if (!Number.isFinite(dist[dst])) {
+    return null
+  }
+
+  const path: number[] = []
+  let cur = dst
+
+  while (cur !== -1) {
+    path.unshift(cur)
+
+    if (cur === src) break
+
+    cur = prev[cur]
+  }
+
+  if (path.length === 0) return null
+  if (path[0] !== src) return null
+
+  return path
+}
+
+/**
+ * Greedy physical realization for a fixed forced ordering.
+ *
+ * This is cheaper than realizeOrderingDP(), but stronger than plain SP concat:
+ *
+ * - avoids forbidden planets
+ * - avoids already visited planets
+ * - prevents visiting future forced stops too early
+ * - prevents returning to start before the final segment
+ *
+ * This is targeted for Challenge-92-style small bonus cases.
+ */
+function realizeOrderingGreedyAvoiding(
+  ordering: number[],
+  forcedIdxs: number[],
+  baseForbidden: ReadonlySet<number>,
+  matrix: CostMatrix,
+  bonusValueByDense: ReadonlyMap<number, number>,
+): RealizedRoute | null {
+  const { n } = matrix
+
+  const stops = ordering.map(i => forcedIdxs[i])
+
+  if (stops.length < 2) return null
+
+  const startDense = stops[0]
+
+  if (stops[stops.length - 1] !== startDense) {
+    return null
+  }
+
+  const forced = new Uint8Array(n)
+
+  for (const idx of stops) {
+    forced[idx] = 1
+  }
+
+  const baseBlocked = new Uint8Array(n)
+
+  for (const idx of baseForbidden) {
+    if (idx >= 0 && idx < n) {
+      baseBlocked[idx] = 1
+    }
+  }
+
+  const seen = new Uint8Array(n)
+  const routeDense: number[] = [startDense]
+
+  seen[startDense] = 1
+
+  for (let seg = 0; seg < stops.length - 1; seg++) {
+    const src = stops[seg]
+    const dst = stops[seg + 1]
+    const isFinalSegment = seg === stops.length - 2
+
+    const blocked = new Uint8Array(baseBlocked)
+
+    /**
+     * Block already visited planets.
+     *
+     * Exceptions:
+     * - current source
+     * - final return to start on final segment
+     */
+    for (let i = 0; i < n; i++) {
+      if (seen[i]) {
+        blocked[i] = 1
+      }
+    }
+
+    blocked[src] = 0
+
+    if (isFinalSegment && dst === startDense) {
+      blocked[dst] = 0
+    }
+
+    /**
+     * Block forced stops that are not this segment destination.
+     *
+     * This prevents:
+     * - visiting mandatory/bonus keys out of this candidate order
+     * - returning to start too early
+     */
+    for (let i = 0; i < n; i++) {
+      if (!forced[i]) continue
+
+      if (i === src) continue
+      if (i === dst) continue
+
+      blocked[i] = 1
+    }
+
+    const segmentPath = shortestPathAvoiding(
+      matrix,
+      src,
+      dst,
+      blocked,
+    )
+
+    if (segmentPath === null || segmentPath.length < 2) {
+      return null
+    }
+
+    for (let i = 1; i < segmentPath.length; i++) {
+      const node = segmentPath[i]
+
+      const isFinalReturnToStart =
+        isFinalSegment &&
+        i === segmentPath.length - 1 &&
+        node === startDense
+
+      if (seen[node] && !isFinalReturnToStart) {
+        return null
+      }
+
+      routeDense.push(node)
+
+      if (!isFinalReturnToStart) {
+        seen[node] = 1
+      }
+    }
+  }
+
+  if (routeDense[0] !== startDense) return null
+  if (routeDense[routeDense.length - 1] !== startDense) return null
+
+  const { gross, collected } = scoreDenseRoute(
+    routeDense,
+    matrix,
+    bonusValueByDense,
+  )
+
+  return {
+    route: routeDense,
+    gross,
+    collected,
+  }
 }
 
 /**
@@ -581,6 +800,15 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
   }
 
   /**
+ * Final scoring collects bonuses from any physically visited planet, not only
+ * bonuses explicitly selected as candidate keys.
+ *
+ * This is used only for safe gross caps in small concat-only enumeration.
+  */
+  const totalCollectableBonusCredit = [...bonusValueByDense.values()]
+    .reduce((sum, value) => sum + value, 0)
+
+  /**
    * Optional bonuses exclude:
    *
    * - start
@@ -742,15 +970,17 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
     bestUpdateCount: 0,
   }*/
 
-  /**
-   * Candidate ordering:
-   *
-   * 1. Empty subset first: quick baseline route.
-   * 2. Large subsets next: use DP fallback, avoids blocking on exact HK.
-   * 3. Then promising lower-bound candidates.
-   */
-  const forcedLenForBonusMask = (bonusMask: number): number =>
-    1 + mandatoryCount + popcount(bonusMask)
+ /**
+ * Candidate ordering:
+ *
+ * 1. Empty subset first: gives a quick mandatory-route baseline.
+ * 2. For small bonus-count exact cases, try full-bonus subset early.
+ *    Challenge 92 needs both bonuses and benefits from this.
+ * 3. Large subsets next: use DP fallback, avoids blocking on exact HK.
+ * 4. Then promising lower-bound candidates.
+ */
+ const forcedLenForBonusMask = (bonusMask: number): number =>
+  1 + mandatoryCount + popcount(bonusMask)
 
   candidates.sort((a, b) => {
     if (a.bonusMask === 0) return -1
@@ -770,9 +1000,42 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
     return ae - be
   })
 
+  /**
+  * Small bonus mode.
+  *
+  * For keyCount <= 8, use the original one-candidate-per-subset shortcut.
+  *
+  * Challenge 86 depends on this for speed.
+  *
+  * Challenge 92 also enters this mode, but receives an additional targeted
+  * greedy enumeration repair below.
+  */
   const useSmallBonusCandidateOnly =
-    bonusCount > 0 &&
-    keyCount <= SMALL_BONUS_CANDIDATE_ONLY_KEY_LIMIT
+  bonusCount > 0 &&
+  keyCount <= SMALL_BONUS_CANDIDATE_ONLY_KEY_LIMIT
+
+/**
+ * Challenge-92-style repair mode.
+ *
+ * Challenge 92:
+ *   mandatoryCount = 5
+ *   bonusCount = 2
+ *   keyCount = 8
+ *
+ * The single metric candidate is not enough, but full DP fallback per ordering
+ * is too expensive. We use exact ordering enumeration with greedy avoiding
+ * realization for only this small mandatory-heavy/low-bonus shape.
+ */
+const useSmallBonusGreedyEnumeration =
+  useSmallBonusCandidateOnly &&
+  mandatoryCount >= 4 &&
+  bonusCount > 0 &&
+  bonusCount <= 3
+
+const allBonusMask =
+  bonusCount > 0
+    ? (1 << bonusCount) - 1
+    : 0
 
   //debugStats.useSmallBonusCandidateOnly = useSmallBonusCandidateOnly
 
@@ -782,51 +1045,44 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
       best.timedOut = true
       break
     }
-
+  
     const selectedBonusIdxs: number[] = []
-
+  
     for (let k = 0; k < bonusCount; k++) {
       if (candidate.bonusMask & (1 << k)) {
         selectedBonusIdxs.push(optionalBonusDenseIdxs[k])
       }
     }
-
+  
     const forcedIdxs = [
       startIdx,
       ...mandatoryIdxs,
       ...selectedBonusIdxs,
     ]
-
+  
     const fLen = forcedIdxs.length
-
+  
     /**
-     * Fast path for small bonus challenges.
+     * Small bonus challenges:
      *
-     * For Challenge 86, this avoids enumerating thousands of permutations via
-     * heldKarpGen(). We already have one DP-optimal metric-closure ordering for
-     * this bonus subset, so realize that ordering directly.
+     * - Challenge 86 must stay fast: one metric candidate per subset.
+     * - Challenge 92 needs an extra repair search, but only for its small
+     *   mandatory-heavy / low-bonus shape.
      */
     if (useSmallBonusCandidateOnly) {
+      /**
+       * Original fast path.
+       *
+       * Important:
+       * candidate.ordering uses full key-node indices, so this must use keyIdxs,
+       * not forcedIdxs.
+       */
       const adjustedLbEffective =
         candidate.lbEffective -
         guaranteedBonusCredit
-
-      if (adjustedLbEffective >= best.effectiveFuel) {
-        continue
-      }
-
-      const fastResult = realizeOrderingByShortestPathConcat(
-        candidate.ordering,
-        keyIdxs,
-        sp,
-        forbiddenDenseSet,
-        matrix,
-        bonusValueByDense,
-      )
-
-      const result =
-        fastResult ??
-        realizeOrderingDP(
+  
+      if (adjustedLbEffective < best.effectiveFuel) {
+        const fastResult = realizeOrderingByShortestPathConcat(
           candidate.ordering,
           keyIdxs,
           sp,
@@ -834,71 +1090,162 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
           matrix,
           bonusValueByDense,
         )
-
-      if (result === null) continue
-
-      const effective = result.gross - result.collected
-
-      if (effective < best.effectiveFuel) {
-        best.effectiveFuel = effective
-        best.route = result.route
-        best.gross = result.gross
-        best.collected = result.collected
+  
+        const result =
+          fastResult ??
+          realizeOrderingDP(
+            candidate.ordering,
+            keyIdxs,
+            sp,
+            forbiddenDenseSet,
+            matrix,
+            bonusValueByDense,
+          )
+  
+        if (result !== null) {
+          const effective = result.gross - result.collected
+  
+          if (effective < best.effectiveFuel) {
+            best.effectiveFuel = effective
+            best.route = result.route
+            best.gross = result.gross
+            best.collected = result.collected
+          }
+        }
       }
-
+  
+      /**
+       * Targeted Challenge-92 repair.
+       *
+       * This runs only for:
+       *
+       *   keyCount <= 8
+       *   mandatoryCount >= 4
+       *   bonusCount <= 3
+       *
+       * It enumerates only:
+       *
+       *   - empty bonus subset
+       *   - full bonus subset
+       *
+       * and realizes orderings with greedy avoiding, not expensive DP.
+       */
+      if (
+        useSmallBonusGreedyEnumeration &&
+        fLen <= EXACT_ENUMERATION_LIMIT &&
+        (candidate.bonusMask === 0 || candidate.bonusMask === allBonusMask)
+      ) {
+        const hkCosts = new Float64Array(fLen * fLen)
+        hkCosts.fill(Infinity)
+  
+        for (let i = 0; i < fLen; i++) {
+          const row = sp.spCost.get(forcedIdxs[i])
+          if (!row) continue
+  
+          for (let j = 0; j < fLen; j++) {
+            hkCosts[i * fLen + j] = row[forcedIdxs[j]]
+          }
+        }
+  
+        const maxGrossForSubset =
+          Number.isFinite(best.effectiveFuel)
+            ? best.effectiveFuel + totalCollectableBonusCredit
+            : Infinity
+  
+        for (const { ordering, cost: lbGross } of heldKarpGen(
+          fLen,
+          hkCosts,
+          maxGrossForSubset,
+        )) {
+          if (Date.now() >= deadline) {
+            best.timedOut = true
+            break
+          }
+  
+          /**
+           * Safe pruning:
+           *
+           * physical gross >= lbGross
+           * collected bonus <= totalCollectableBonusCredit
+           */
+          if (
+            Number.isFinite(best.effectiveFuel) &&
+            lbGross - totalCollectableBonusCredit >= best.effectiveFuel
+          ) {
+            break
+          }
+  
+          const result = realizeOrderingGreedyAvoiding(
+            ordering,
+            forcedIdxs,
+            forbiddenDenseSet,
+            matrix,
+            bonusValueByDense,
+          )
+  
+          if (result === null) continue
+  
+          const effective = result.gross - result.collected
+  
+          if (effective < best.effectiveFuel) {
+            best.effectiveFuel = effective
+            best.route = result.route
+            best.gross = result.gross
+            best.collected = result.collected
+          }
+        }
+  
+        if (best.timedOut) break
+      }
+  
       continue
     }
-
-    if (fLen === 1) {
-      const route = [startIdx, startIdx]
-      const gross = 0
-      const collected = bonusValueByDense.get(startIdx) ?? 0
-      const effective = gross - collected
-
-      if (effective < best.effectiveFuel) {
-        best.effectiveFuel = effective
-        best.route = route
-        best.gross = gross
-        best.collected = collected
-      }
-
-      continue
-    }
-
+  
+    /**
+     * Normal exact enumeration path.
+     *
+     * This is required for challenges like 90 and 91.
+     *
+     * Your current file accidentally bypasses this and treats these challenges
+     * like large single-candidate cases, which is why they became wrong.
+     */
     if (fLen <= EXACT_ENUMERATION_LIMIT) {
       const hkCosts = new Float64Array(fLen * fLen)
       hkCosts.fill(Infinity)
-
+  
       for (let i = 0; i < fLen; i++) {
         const row = sp.spCost.get(forcedIdxs[i])
         if (!row) continue
-
+  
         for (let j = 0; j < fLen; j++) {
           hkCosts[i * fLen + j] = row[forcedIdxs[j]]
         }
       }
-
+  
       const maxGrossForSubset =
         best.effectiveFuel +
         candidate.bonusCredit +
         guaranteedBonusCredit
-
-      for (const { ordering, cost: lbGross } of heldKarpGen(fLen, hkCosts, maxGrossForSubset)) {
-        //debugStats.hkOrderingCount++
+  
+      for (const { ordering, cost: lbGross } of heldKarpGen(
+        fLen,
+        hkCosts,
+        maxGrossForSubset,
+      )) {
         if (Date.now() >= deadline) {
           best.timedOut = true
           break
         }
-
+  
         const lbEffective =
           lbGross -
           candidate.bonusCredit -
           guaranteedBonusCredit
-
+  
         if (lbEffective >= best.effectiveFuel) {
           break
         }
-
+  
         const fastResult = realizeOrderingByShortestPathConcat(
           ordering,
           forcedIdxs,
@@ -907,14 +1254,7 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
           matrix,
           bonusValueByDense,
         )
-
-        /*if (fastResult !== null) {
-          debugStats.concatSuccessCount++
-        } else {
-          debugStats.concatFailCount++
-          debugStats.realizeDPCallCount++
-        }*/
-
+  
         const result =
           fastResult ??
           realizeOrderingDP(
@@ -925,40 +1265,36 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
             matrix,
             bonusValueByDense,
           )
-
-        /*if (fastResult === null && result !== null) {
-          debugStats.realizeDPSuccessCount++
-        }*/
-
+  
         if (result === null) continue
-
+  
         const effective = result.gross - result.collected
-
+  
         if (effective < best.effectiveFuel) {
-          //debugStats.bestUpdateCount++
-
           best.effectiveFuel = effective
           best.route = result.route
           best.gross = result.gross
           best.collected = result.collected
         }
       }
-
+  
       if (best.timedOut) break
     } else {
       /**
        * Large subset:
        *
        * Use DP-backtracked ordering. No factorial enumeration.
+       *
+       * This original pruning is important for Challenge 95 and 105.
        */
       const adjustedLbEffective =
         candidate.lbEffective -
         guaranteedBonusCredit
-
+  
       if (adjustedLbEffective >= best.effectiveFuel) {
         continue
       }
-
+  
       const fastResult = realizeOrderingByShortestPathConcat(
         candidate.ordering,
         keyIdxs,
@@ -967,7 +1303,7 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
         matrix,
         bonusValueByDense,
       )
-
+  
       const result =
         fastResult ??
         realizeOrderingDP(
@@ -978,11 +1314,11 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
           matrix,
           bonusValueByDense,
         )
-
+  
       if (result === null) continue
-
+  
       const effective = result.gross - result.collected
-
+  
       if (effective < best.effectiveFuel) {
         best.effectiveFuel = effective
         best.route = result.route

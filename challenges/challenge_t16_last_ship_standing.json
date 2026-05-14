@@ -1,0 +1,23 @@
+[
+  {
+    "ChallengeId": 16,
+    "ChallengeName": "T16: Last Ship Standing",
+    "StartPlanetId": "90",
+    "MandatoryPlanets": [
+      { "PlanetId": 104, "Name": "Dantooine" },
+      { "PlanetId": 2, "Name": "Alderaan" },
+      { "PlanetId": 58, "Name": "Naboo" },
+      { "PlanetId": 44, "Name": "Denon" },
+      { "PlanetId": 76, "Name": "Gizer" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 189, "Name": "Chardaan" },
+      { "PlanetId": 171, "Name": "Agamar" }
+    ],
+    "BonusPlanets": [
+      { "PlanetId": 6, "Name": "Brentaal", "Bonus": 150 },
+      { "PlanetId": 80, "Name": "Ryloth", "Bonus": 450 }
+    ],
+    "IsFinished": false
+  }
+]

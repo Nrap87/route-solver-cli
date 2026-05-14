@@ -7,7 +7,8 @@
       { "PlanetId": 101, "Name": "" },
       { "PlanetId": 174, "Name": "" }
     ],
-    "IsFinished": false
+    "IsFinished": false,
+    "realFuel": 2128
   },
   {
     "ChallengeId": 85,
@@ -22,7 +23,8 @@
       { "PlanetId": 45, "Name": "" },
       { "PlanetId": 157, "Name": "" }
     ],
-    "IsFinished": false
+    "IsFinished": false,
+    "realFuel": 2275
   },
   {
     "ChallengeId": 86,
@@ -44,7 +46,8 @@
       { "PlanetId": 182, "Name": "", "Bonus": 200 },
       { "PlanetId": 183, "Name": "", "Bonus": 100 }
     ],
-    "IsFinished": false
+    "IsFinished": false,
+    "realFuel": 1980
   },
   {
     "ChallengeId": 90,
@@ -57,7 +60,8 @@
       { "PlanetId": 44, "Name": "" },
       { "PlanetId": 76, "Name": "" }
     ],
-    "IsFinished": false
+    "IsFinished": false,
+    "realFuel": 3472
   },
   {
     "ChallengeId": 91,
@@ -74,7 +78,8 @@
       { "PlanetId": 189, "Name": "" },
       { "PlanetId": 171, "Name": "" }
     ],
-    "IsFinished": false
+    "IsFinished": false,
+    "realFuel": 3634
   },
   {
     "ChallengeId": 92,
@@ -95,7 +100,8 @@
       { "PlanetId": 6, "Name": "Brentaal", "Bonus": 150 },
       { "PlanetId": 80, "Name": "Ryloth", "Bonus": 450 }
     ],
-    "IsFinished": false
+    "IsFinished": false,
+    "realFuel": 3460
   },
   {
     "ChallengeId": 93,
@@ -109,7 +115,8 @@
       { "PlanetId": 88, "Name": "" },
       { "PlanetId": 175, "Name": "" }
     ],
-    "IsFinished": false
+    "IsFinished": false,
+    "realFuel": 2303
   },
   {
     "ChallengeId": 94,
@@ -129,7 +136,8 @@
       { "PlanetId": 51, "Name": "" },
       { "PlanetId": 179, "Name": "" }
     ],
-    "IsFinished": false
+    "IsFinished": false,
+    "realFuel": 2527
   },
   {
     "ChallengeId": 95,
@@ -155,7 +163,8 @@
       { "PlanetId": 172, "Name": "", "Bonus": 400 },
       { "PlanetId": 189, "Name": "Chardaan", "Bonus": 300 }
     ],
-    "IsFinished": false
+    "IsFinished": false,
+    "realFuel": 2461
   },
   {
     "ChallengeId": 100,
@@ -170,7 +179,8 @@
       { "PlanetId": 155, "Name": "" },
       { "PlanetId": 55, "Name": "" }
     ],
-    "IsFinished": false
+    "IsFinished": false,
+    "realFuel": 2818
   },
   {
     "ChallengeId": 101,
@@ -191,7 +201,8 @@
       { "PlanetId": 23, "Name": "" },
       { "PlanetId": 78, "Name": "" }
     ],
-    "IsFinished": false
+    "IsFinished": false,
+    "realFuel": 3005
   },
   {
     "ChallengeId": 102,
@@ -217,7 +228,8 @@
       { "PlanetId": 154, "Name": "Terminus", "Bonus": 200 },
       { "PlanetId": 137, "Name": "", "Bonus": 100 }
     ],
-    "IsFinished": false
+    "IsFinished": false,
+    "realFuel": 2915
   },
   {
     "ChallengeId": 103,
@@ -237,7 +249,8 @@
             "Name": "Constancia"
         }
     ],
-    "IsFinished": true
+    "IsFinished": true,
+    "realFuel": 1887
   },
   {
       "ChallengeId": 104,
@@ -271,7 +284,8 @@
               "Name": "Chardaan"
           }
       ],
-      "IsFinished": true
+      "IsFinished": true,
+      "realFuel": 1980
   },
   {
       "ChallengeId": 105,
@@ -362,7 +376,8 @@
               "Bonus": 100
           }
       ],
-      "IsFinished": true
+      "IsFinished": true,
+      "realFuel": 1554
   },
   {
     "startPlanetId": 170,
@@ -375,7 +390,8 @@
     "bonusStops": [],
     "challengeId": 106,
     "challengeName": "The Myth of Sisyphus: Stars' End",
-    "isFinished": true
+    "isFinished": true,
+    "realFuel": 4978
   },
   {
     "startPlanetId": 170,
@@ -392,7 +408,8 @@
     "bonusStops": [],
     "challengeId": 107,
     "challengeName": "The Myth of Sisyphus: Corporate Sector Authority",
-    "isFinished": true
+    "isFinished": true,
+    "realFuel": 5091
   },
   {
     "startPlanetId": 170,
@@ -430,6 +447,7 @@
     ],
     "challengeId": 108,
     "challengeName": "The Myth of Sisyphus: Wild Space",
-    "isFinished": true
+    "isFinished": true,
+    "realFuel": 4721
   }
 ]

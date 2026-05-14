@@ -16,11 +16,11 @@ export function solve(input: SolveInput): SolveResult {
     const mandatoryOnlyResult = trySolveSmallMandatoryOnly(input)
 
     if (mandatoryOnlyResult !== null) {
-      console.log('mandatory-only fast path used')
+      //console.log('mandatory-only fast path used')
       return mandatoryOnlyResult
     }
   }
 
-  console.log('falling back to heldKarpSolve')
+  //console.log('falling back to heldKarpSolve')
   return heldKarpSolve(input)
 }

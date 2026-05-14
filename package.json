@@ -12,7 +12,9 @@
     "web:install": "npm install --prefix web",
     "web:build": "npm run build --prefix web",
     "web:preview": "npm run preview --prefix web",
-    "render:build": "npm install && npm install --prefix web && npm run web:build"
+    "render:build": "npm install && npm install --prefix web && npm run web:build",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "engines": {
     "node": ">=18.19.0"
@@ -20,6 +22,7 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "tsx": "^4.19.2",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.4"
   }
 }
