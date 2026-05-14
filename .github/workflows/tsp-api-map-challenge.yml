@@ -1,0 +1,59 @@
+# Manual run: API map from Star Delivery + local challenge JSON + submit each solved challenge
+# (same as `node dist/cli.js ... --api-map --challenge <file> --submit`).
+#
+# Uses the same secrets as `tsp-cron-window.yml`:
+#   STAR_DELIVERY_BASE_URL, PLAYER_GUID, PLAYER_EMAIL
+
+name: TSP API map + challenge file
+
+on:
+  workflow_dispatch:
+    inputs:
+      challenge_path:
+        description: Challenge JSON path relative to repo root
+        type: string
+        default: challenges/challenges_all_with_fuel.json
+
+jobs:
+  api-map-challenge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      STAR_DELIVERY_BASE_URL: ${{ secrets.STAR_DELIVERY_BASE_URL }}
+      PLAYER_GUID: ${{ secrets.PLAYER_GUID }}
+      PLAYER_EMAIL: ${{ secrets.PLAYER_EMAIL }}
+      CHALLENGE_PATH: ${{ github.event.inputs.challenge_path }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install and build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Run CLI (api-map + challenge)
+        run: |
+          mkdir -p logs
+          set -o pipefail
+          node dist/cli.js \
+            --base-url="${STAR_DELIVERY_BASE_URL}" \
+            --player-guid="${PLAYER_GUID}" \
+            --player-email="${PLAYER_EMAIL}" \
+            --api-map \
+            --challenge "${CHALLENGE_PATH}" \
+            --submit 2>&1 | tee logs/api-map-challenge.log
+
+      - name: Upload run log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsp-api-map-challenge-${{ github.run_id }}
+          path: logs/api-map-challenge.log
+          if-no-files-found: warn
