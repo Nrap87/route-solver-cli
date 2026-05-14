@@ -1,6 +1,6 @@
 # Route Solver CLI
 
-Held–Karp style **Star Delivery** route solver (solver logic aligned with [majos95/route-solver-web](https://github.com/majos95/route-solver-web)), packaged as a **Node CLI**, optional **REST integration** with OutSystems Star Delivery services, and a small **React + Vite** dashboard for daily challenges.
+Held–Karp style **Star Delivery** route solver, packaged as a **Node CLI**, optional **REST integration** with OutSystems Star Delivery services, and a small **React + Vite** dashboard for daily challenges.
 
 ## What problem this solves
 
