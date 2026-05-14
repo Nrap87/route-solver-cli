@@ -1,7 +1,7 @@
 [
   {
-    "ChallengeId": 97,
-    "ChallengeName": "Challenge 97",
+    "ChallengeId": 93,
+    "ChallengeName": "Challenge 93",
     "StartPlanetId": "25",
     "MandatoryPlanets": [
       { "PlanetId": 3, "Name": "" },
@@ -14,8 +14,8 @@
     "IsFinished": false
   },
   {
-    "ChallengeId": 98,
-    "ChallengeName": "Challenge 98",
+    "ChallengeId": 94,
+    "ChallengeName": "Challenge 94",
     "StartPlanetId": "25",
     "MandatoryPlanets": [
       { "PlanetId": 3, "Name": "" },
@@ -34,8 +34,8 @@
     "IsFinished": false
   },
   {
-    "ChallengeId": 99,
-    "ChallengeName": "Challenge 99",
+    "ChallengeId": 95,
+    "ChallengeName": "Challenge 95",
     "StartPlanetId": "25",
     "MandatoryPlanets": [
       { "PlanetId": 3, "Name": "" },

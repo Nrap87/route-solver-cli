@@ -1,0 +1,70 @@
+[
+  {
+    "startPlanetId": 170,
+    "mandatoryPlanetIds": [
+      69,
+      107,
+      111
+    ],
+    "forbiddenPlanetIds": [],
+    "bonusStops": [],
+    "challengeId": 106,
+    "challengeName": "The Myth of Sisyphus: Stars' End",
+    "isFinished": true
+  },
+  {
+    "startPlanetId": 170,
+    "mandatoryPlanetIds": [
+      69,
+      107,
+      111
+    ],
+    "forbiddenPlanetIds": [
+      28,
+      184,
+      76
+    ],
+    "bonusStops": [],
+    "challengeId": 107,
+    "challengeName": "The Myth of Sisyphus: Corporate Sector Authority",
+    "isFinished": true
+  },
+  {
+    "startPlanetId": 170,
+    "mandatoryPlanetIds": [
+      69,
+      107,
+      111
+    ],
+    "forbiddenPlanetIds": [
+      28,
+      184,
+      76
+    ],
+    "bonusStops": [
+      {
+        "planetId": 101,
+        "value": 300
+      },
+      {
+        "planetId": 81,
+        "value": 150
+      },
+      {
+        "planetId": 146,
+        "value": 100
+      },
+      {
+        "planetId": 23,
+        "value": 250
+      },
+      {
+        "planetId": 56,
+        "value": 100
+      }
+    ],
+    "challengeId": 108,
+    "challengeName": "The Myth of Sisyphus: Wild Space",
+    "isFinished": true
+  }
+]
