@@ -2,6 +2,23 @@
 
 Held–Karp style **Star Delivery** route solver (solver logic aligned with [majos95/route-solver-web](https://github.com/majos95/route-solver-web)), packaged as a **Node CLI**, optional **REST integration** with OutSystems Star Delivery services, and a small **React + Vite** dashboard for daily challenges.
 
+## What problem this solves
+
+**Star Delivery** challenges give you a **map of planets** (2D coordinates), **hyperspace routes** between some pairs (with cheaper travel along those lanes), and a **challenge definition**: a start planet, planets you **must** visit, planets you **must not** visit, and optional **bonus stops** that credit fuel when visited.
+
+The solver’s job is to produce a **round trip** that:
+
+- Begins and ends at the required start planet  
+- Visits every **mandatory** planet at least once  
+- Never uses **forbidden** planets as stops (they are removed from routing)  
+- May optionally visit **bonus** planets to reduce **effective** fuel cost  
+
+**Fuel** is computed from **Euclidean** distances between planets. Every pair of planets is implicitly connected; if the game lists a **main** or **other** route for a pair, that edge uses a **discounted** multiplier (`buildCostMatrix` in `costMatrix.ts` matches the usual Star Delivery rules: main and other routes shave cost relative to the straight-line distance).
+
+Because you can leave the “key” planets and cross the full graph in between, the implementation works on a **metric closure**: shortest-path costs between important nodes, then **ordering** those visits. Candidate orderings are scored in metric space, then many are **physically realized** on the full planet graph (actual shortest paths segment by segment) so the final route and **gross** / **effective** fuel match real movement—not just the simplified complete graph over key nodes.
+
+The public entry point is `solve()` in `src/solver/solve.ts`: tiny mandatory-only challenges use a **fast path**; everything else goes through **`heldKarpSolve`**, which combines timeout limits, optional **orienteering** DP for bonus subsets, and a **Held–Karp–style** best-first generator over orderings (`heldKarp.ts`).
+
 ## Requirements
 
 - **Node.js** ≥ 18.19
@@ -153,11 +170,38 @@ If you use a **Web Service** instead of a static site, set the build command the
 | `src/api.ts` | Star Delivery REST helpers |
 | `src/adapt.ts` | JSON / API → solver models |
 | `src/challengeDocument.ts` | Challenge list JSON normalization |
-| `src/solver/` | Types, Held–Karp pipeline, `solve()` |
+| `src/solver/` | Types, Held–Karp pipeline, `solve()` — see **`src/solver` module reference** below |
 | `challenges/` | Example challenge JSON |
 | `web/` | Vite + React dashboard |
 
-Solver unit tests live under `src/solver/__tests__/` and are excluded from the default `tsc` build; run them with your preferred test runner if you wire one in.
+Test files under `src/solver/__tests__/` use Vitest-style `describe` / `it` / `expect` APIs; they are excluded from the default `tsc` build (add Vitest—or another runner—and a script when you want CI to execute them). Each file is summarized in the **Unit tests** subsection below.
+
+## `src/solver` module reference
+
+| File | Role |
+|------|------|
+| **`types.ts`** | Core data contracts: `Planet`, `Route`, `Bonus`, `SolveInput` (everything the solver needs from a challenge + map), and `SolveResult` (ordered planets, gross/effective fuel, bonus total, errors / timeout). |
+| **`edgeCost.ts`** | Shared geometry and routing helpers: Euclidean distance, canonical undirected `routeKey` for edges, optional **`edgeCost`** / **`buildRouteSets`** when you need costs without building a full matrix. |
+| **`costMatrix.ts`** | Builds a dense **`n × n`** `Float64Array` of direct leg costs between all planets from coordinates + route discounts (`main` / `other`). Exposes `idToIdx` / `idxToId` for dense ↔ API id mapping. |
+| **`allPairsSP.ts`** | **All-pairs shortest paths** on the dense cost matrix (Floyd–Warshall), respecting forbidden planets as non-nodes. Produces shortest-path **costs** and **paths** for realizing legs on the real graph. |
+| **`heap.ts`** | Small **binary min-heap** used by ordering search (priorities + payloads). |
+| **`heldKarp.ts`** | **`heldKarpGen`**: best-first expansion of **round-trip visit orderings** over key nodes using metric-closure costs, with an upper-bound cutoff to prune the search. Yields orderings in increasing lower-bound cost (not the same as classical Held–Karp DP, but serves the same “try good permutations first” role—see file comment). |
+| **`orienteeringDP.ts`** | **Orienteering-style DP** (`orienteeringDPCandidates`): for each subset of optional bonus key nodes, computes a DP-optimal ordering in metric-closure space and lower-bound gross/effective costs. Used inside **`heldKarpSolve`** to avoid exploding bonus-subset enumeration on larger instances. |
+| **`selectiveTsp.ts`** | Another DP (**`selectiveTspCandidates`**) for selective TSP-style tours with per-node bonuses in metric space. It is **not** imported by `solve()` / `heldKarpSolve` today; kept as a self-contained algorithm module for experiments or future wiring. |
+| **`mandatoryOnlySolve.ts`** | Fast path for **very small** instances: at most three mandatory planets (excluding start), **no** bonus planets. Enumerates safe mandatory-only routes using blocked Dijkstra-style shortest paths on the dense matrix. Exported as **`trySolveSmallMandatoryOnly`** (returns `null` if it declines). |
+| **`heldKarpSolve.ts`** | Main heavy solver: builds matrices and all-pairs SP, derives key-node sets, combines **orienteering DP** (when applicable) with **`heldKarpGen`** and exact enumeration paths, **realizes** orderings into full planet sequences, tracks **gross** vs **collected bonus** vs **effective** fuel, and enforces a **time budget** (`TIMEOUT_MS`). |
+| **`solve.ts`** | Facade **`solve(input)`**: tries the mandatory-only fast path when input matches its guard, otherwise logs and delegates to **`heldKarpSolve`**. |
+| **`adapters.ts`** | Maps **Star Delivery OpenAPI** shapes (`PlanetOut`, `RouteOut`, `ChallengeOut`) into internal **`SolveInput`**, plus **`toPlanetSimple`** for API responses. |
+| **`solver.worker.ts`** | Browser **Web Worker** entry: receives a `SolveInput` via `postMessage`, runs **`solve`**, posts back `{ ok, result }` or an error string. |
+
+### Unit tests (`src/solver/__tests__/`)
+
+| File | Role |
+|------|------|
+| **`solver.test.ts`** | Vitest coverage for **`buildCostMatrix`**, **`computeAllPairsSP`**, **`heldKarpGen`**, and end-to-end **`solve`** on small hand-crafted maps (discounts, mandatories, bonuses, forbidden nodes). |
+| **`adapters.test.ts`** | Tests **`adaptPlanet`**, **`adaptRoute`**, **`adaptChallenge`**, and **`toPlanetSimple`** against representative API-shaped payloads. |
+| **`realWorld.fixture.ts`** | Static snapshot of **GetPlanetsAndRoutes**–style planets and routes (full game galaxy) used as shared test data. |
+| **`realWorld.test.ts`** | **`solve`** regression tests on that real map: builds `SolveInput` from adapted API data and asserts routes / fuel for specific challenge scenarios. |
 
 ## Default REST host
 
