@@ -1,0 +1,78 @@
+# Runs the same schedule as locally: every minute at :00 between window-start and window-end
+# (inclusive), each tick runs `node dist/cli.js --daily-api` (+ optional --submit).
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   STAR_DELIVERY_BASE_URL — e.g. https://wecode.outsystems.com/.../StarDeliveryServices
+#   PLAYER_GUID
+#   PLAYER_EMAIL
+#
+# Note: `tsp_cron_service` does not parse --base-url; the child reads STAR_DELIVERY_BASE_URL
+# (or VITE_API_BASE_URL) from the environment.
+
+name: TSP cron (daily API window)
+
+on:
+  workflow_dispatch:
+    inputs:
+      window_start:
+        description: Window start (HH:MM, local to TZ below)
+        type: string
+        default: "22:45"
+      window_end:
+        description: Window end (HH:MM, local to TZ below)
+        type: string
+        default: "22:50"
+      timezone:
+        description: IANA timezone for the window (runners are UTC unless you set this)
+        type: string
+        default: "UTC"
+      log_dir:
+        description: Log directory (relative to repo root, or absolute)
+        type: string
+        default: "tsp_logs"
+
+jobs:
+  tsp-cron:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    env:
+      TZ: ${{ github.event.inputs.timezone }}
+      STAR_DELIVERY_BASE_URL: ${{ secrets.STAR_DELIVERY_BASE_URL }}
+      PLAYER_GUID: ${{ secrets.PLAYER_GUID }}
+      PLAYER_EMAIL: ${{ secrets.PLAYER_EMAIL }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - name: Install and build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Run cron window (every-minute + submit)
+        id: cron
+        run: |
+          LOG_DIR="${LOG_DIR_INPUT}"
+          echo "log_dir=${LOG_DIR}" >> "$GITHUB_OUTPUT"
+          node ./scripts/run-cron.mjs \
+            --every-minute \
+            --window-start="${{ github.event.inputs.window_start }}" \
+            --window-end="${{ github.event.inputs.window_end }}" \
+            --log-dir="$LOG_DIR" \
+            --submit
+        env:
+          LOG_DIR_INPUT: ${{ github.event.inputs.log_dir }}
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: tsp-cron-logs-${{ github.run_id }}
+          path: ${{ steps.cron.outputs.log_dir || github.event.inputs.log_dir || 'tsp_logs' }}
+          if-no-files-found: warn
