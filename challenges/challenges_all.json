@@ -1,5 +1,47 @@
 [
   {
+    "ChallengeId": 1,
+    "ChallengeName": "Coruscant Level 1",
+    "StartPlanetId": "1",
+    "MandatoryPlanets": [
+      { "PlanetId": 76, "Name": "GIZER" },
+      { "PlanetId": 100, "Name": "WAYLAND" },
+      { "PlanetId": 47, "Name": "DORIN" }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 2,
+    "ChallengeName": "Challenge 2",
+    "StartPlanetId": "1",
+    "MandatoryPlanets": [
+      { "PlanetId": 76, "Name": "GIZER" },
+      { "PlanetId": 100, "Name": "WAYLAND" },
+      { "PlanetId": 47, "Name": "DORIN" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 43, "Name": "TIRAHNN" }
+    ],
+    "IsFinished": false
+  },
+  {
+    "ChallengeId": 3,
+    "ChallengeName": "Challenge 3",
+    "StartPlanetId": "1",
+    "MandatoryPlanets": [
+      { "PlanetId": 76, "Name": "GIZER" },
+      { "PlanetId": 100, "Name": "WAYLAND" },
+      { "PlanetId": 47, "Name": "DORIN" }
+    ],
+    "ForbiddenPlanets": [
+      { "PlanetId": 43, "Name": "TIRAHNN" }
+    ],
+    "BonusPlanets": [
+      { "PlanetId": 30, "Name": "LORONAR", "Bonus": 300 }
+    ],
+    "IsFinished": false
+  },
+  {
     "ChallengeId": 84,
     "ChallengeName": "Challenge 84",
     "StartPlanetId": "10",
