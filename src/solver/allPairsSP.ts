@@ -9,29 +9,15 @@ export interface AllPairsSP {
 }
 
 /**
- * Computes shortest paths using Floyd-Warshall over the dense cost matrix.
+ * Computes shortest paths only from the requested key sources.
  *
- * Why Floyd-Warshall here?
+ * This is faster than Floyd-Warshall for these challenge shapes because the
+ * graph has ~194 planets but each challenge usually needs paths from only
+ * start + mandatory + bonus key nodes.
  *
- * The graph is complete:
- *
- *   n = 194
- *   edges ≈ n² = 37,636
- *
- * Heap-Dijkstra from each key source repeatedly scans all n neighbors and can
- * create many heap entries when discounted chains cause repeated improvements.
- *
- * Floyd-Warshall is:
- *
- *   O(n³) = 194³ ≈ 7.3 million relaxations
- *
- * which is very predictable and fast with flat typed arrays.
- *
- * Forbidden planets are removed as usable nodes:
- *
- *   - they cannot be destinations
- *   - they cannot be sources
- *   - they cannot be intermediates
+ * The graph is dense, so this uses O(k * n^2) Dijkstra with linear min
+ * selection instead of a heap. For n ≈ 194 this is fast and avoids heap
+ * allocation overhead.
  */
 export function computeAllPairsSP(
   matrix: CostMatrix,
@@ -48,151 +34,131 @@ export function computeAllPairsSP(
     }
   }
 
-  /**
-   * dist[i * n + j] = current shortest distance i -> j
-   */
-  const dist = new Float64Array(data)
-
-  /**
-   * next[i * n + j] = next node after i on shortest path to j.
-   *
-   * -1 means unreachable / invalid.
-   */
-  const next = new Int32Array(n * n)
-  next.fill(-1)
-
-  /**
-   * Initialize forbidden rows/columns and path successors.
-   */
-  for (let i = 0; i < n; i++) {
-    const rowBase = i * n
-
-    if (forbidden[i]) {
-      for (let j = 0; j < n; j++) {
-        dist[rowBase + j] = Infinity
-      }
-
-      continue
-    }
-
-    for (let j = 0; j < n; j++) {
-      const idx = rowBase + j
-
-      if (forbidden[j]) {
-        dist[idx] = Infinity
-        continue
-      }
-
-      if (i === j) {
-        dist[idx] = 0
-        next[idx] = j
-        continue
-      }
-
-      if (Number.isFinite(dist[idx])) {
-        next[idx] = j
-      }
-    }
-  }
-
-  /**
-   * Floyd-Warshall.
-   *
-   * Important:
-   * We skip forbidden k and i.
-   * Forbidden j already has dist[k,j] = Infinity, so no special inner check is needed.
-   */
-  for (let k = 0; k < n; k++) {
-    if (forbidden[k]) continue
-
-    const kBase = k * n
-
-    for (let i = 0; i < n; i++) {
-      if (forbidden[i]) continue
-
-      const iBase = i * n
-      const dik = dist[iBase + k]
-
-      if (!Number.isFinite(dik)) continue
-
-      const nextIK = next[iBase + k]
-      if (nextIK < 0) continue
-
-      for (let j = 0; j < n; j++) {
-        const dkj = dist[kBase + j]
-        const nd = dik + dkj
-        const ij = iBase + j
-
-        if (nd < dist[ij]) {
-          dist[ij] = nd
-          next[ij] = nextIK
-        }
-      }
-    }
-  }
-
   const spCost = new Map<number, Float64Array>()
   const spPath = new Map<number, (number[] | null)[]>()
 
-  for (const src of sourceDenseIndices) {
-    const costs = new Float64Array(n)
+  /**
+   * Avoid recomputing duplicate sources.
+   */
+  const uniqueSources = [...new Set(sourceDenseIndices)]
+
+  for (const src of uniqueSources) {
+    const dist = new Float64Array(n)
+    dist.fill(Infinity)
+
+    const prev = new Int32Array(n)
+    prev.fill(-1)
+
+    const used = new Uint8Array(n)
+
     const paths: (number[] | null)[] = new Array(n).fill(null)
 
     if (src < 0 || src >= n || forbidden[src]) {
-      costs.fill(Infinity)
-      spCost.set(src, costs)
+      spCost.set(src, dist)
       spPath.set(src, paths)
       continue
     }
 
-    const srcBase = src * n
+    dist[src] = 0
 
+    /**
+     * Dense Dijkstra:
+     *
+     * Repeatedly select the unused non-forbidden node with smallest distance.
+     */
+    for (let iter = 0; iter < n; iter++) {
+      let u = -1
+      let best = Infinity
+
+      for (let i = 0; i < n; i++) {
+        if (used[i]) continue
+        if (forbidden[i]) continue
+
+        const d = dist[i]
+
+        if (d < best) {
+          best = d
+          u = i
+        }
+      }
+
+      if (u === -1) break
+      if (!Number.isFinite(best)) break
+
+      used[u] = 1
+
+      const base = u * n
+
+      for (let v = 0; v < n; v++) {
+        if (used[v]) continue
+        if (forbidden[v]) continue
+        if (v === u) continue
+
+        const edge = data[base + v]
+        if (!Number.isFinite(edge)) continue
+
+        const nd = best + edge
+
+        if (nd < dist[v]) {
+          dist[v] = nd
+          prev[v] = u
+        }
+      }
+    }
+
+    /**
+     * Reconstruct paths from prev[].
+     */
     for (let dst = 0; dst < n; dst++) {
-      costs[dst] = dist[srcBase + dst]
-
       if (forbidden[dst]) continue
 
-      if (src === dst) {
+      if (dst === src) {
         paths[dst] = [src]
         continue
       }
 
-      if (!Number.isFinite(dist[srcBase + dst])) continue
-      if (next[srcBase + dst] < 0) continue
+      if (!Number.isFinite(dist[dst])) continue
 
-      const path: number[] = [src]
-      let cur = src
+      const reversePath: number[] = []
+      let cur = dst
 
-      /**
-       * Positive edge weights imply no shortest-path cycle is needed.
-       * This guard prevents infinite loops if something unexpected happens.
-       */
       let guard = 0
 
-      while (cur !== dst) {
-        cur = next[cur * n + dst]
+      while (cur !== -1) {
+        reversePath.push(cur)
 
-        if (cur < 0) {
-          path.length = 0
-          break
-        }
+        if (cur === src) break
 
-        path.push(cur)
+        cur = prev[cur]
 
         guard++
 
         if (guard > n + 5) {
-          path.length = 0
+          reversePath.length = 0
           break
         }
       }
 
-      paths[dst] = path.length > 0 ? path : null
+      if (reversePath.length === 0) {
+        paths[dst] = null
+        continue
+      }
+
+      if (reversePath[reversePath.length - 1] !== src) {
+        paths[dst] = null
+        continue
+      }
+
+      reversePath.reverse()
+      paths[dst] = reversePath
     }
 
-    spCost.set(src, costs)
+    spCost.set(src, dist)
     spPath.set(src, paths)
   }
 
-  return { spCost, spPath }
+  return {
+    spCost,
+    spPath,
+  }
 }

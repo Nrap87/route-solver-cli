@@ -1,530 +1,82 @@
-import type { Bonus, Planet, SolveInput, SolveResult } from './types.js'
+import type { SolveInput, SolveResult } from './types.js'
 import type { CostMatrix } from './costMatrix.js'
 import type { AllPairsSP } from './allPairsSP.js'
 import { buildCostMatrix } from './costMatrix.js'
 import { computeAllPairsSP } from './allPairsSP.js'
 import { heldKarpGen } from './heldKarp.js'
-import { MinHeap } from './heap.js'
-import { orienteeringDPCandidates } from './orienteeringDP.js'
 
 const TIMEOUT_MS = 15 * 60 * 1000
 
 /**
- * Exact permutation enumeration is expensive because each ordering may require
- * physical route realization.
+ * Target state count per physical realization Dijkstra call:
  *
- * fLen = 8 means at most 7! = 5,040 orderings.
- * fLen = 9 means 8! = 40,320 orderings and can become slow.
+ *   (segCount + 1) × n × 2^K
+ *
+ * K is the number of tracked bottleneck transit nodes.
  */
-const EXACT_ENUMERATION_LIMIT = 8
+const MAX_DP_STATES = 120_000
 
 /**
- * For small bonus challenges, avoid factorial Held-Karp generator enumeration.
+ * Fixed typed-heap capacity per realization call.
  *
- * Challenge 86 has:
- *
- *   start + 2 mandatory + 5 bonus = 8 key nodes
- *
- * Exhaustively generating orderings for every bonus subset can take 10s+.
- * Instead, for keyCount <= this limit, use the metric-closure DP ordering once
- * per bonus subset and physically realize only that candidate.
+ * This avoids per-push object allocation and tuple boxing.
  */
-const SMALL_BONUS_CANDIDATE_ONLY_KEY_LIMIT = 8
+const HEAP_CAP = 1_000_000
 
 /**
- * Mandatory-only shortest-path concatenation is only safe as a direct return for
- * very small cases.
+ * Maria-style exact ordering threshold.
  *
- * Challenge 106 has 3 mandatory planets and benefits from this shortcut.
+ * With the optimized typed-array realization engine, fLen <= 11 is usually
+ * practical and gives better search coverage than the older fLen <= 8 heuristic.
  */
-const MANDATORY_ONLY_SHORTEST_PATH_FAST_LIMIT = 3
+const MAX_HK_N = 11
 
-/**
- * For larger mandatory-only challenges, the shortest-path permutation result is
- * not always globally correct, so we must not return it immediately.
- *
- * However, it is still useful as an initial upper bound for pruning the general
- * solver.
- *
- * 8 mandatory planets = 40,320 permutations, still acceptable for a one-time
- * baseline.
- */
-const MANDATORY_ONLY_INITIAL_BOUND_LIMIT = 8
-
-type RealizedRoute = {
-  route: number[]
-  gross: number
-  collected: number
+type NormalizedBonus = {
+  planetId: number
+  value: number
 }
 
-function popcount(mask: number): number {
-  let c = 0
-
-  while (mask) {
-    mask &= mask - 1
-    c++
-  }
-
-  return c
+interface DpWork {
+  dist: Float64Array
+  parent: Int32Array
+  stopOf: Int32Array
+  keyBit: Int32Array
+  forbArr: Uint8Array
+  hPri: Float64Array
+  hVal: Int32Array
+  hSz: number
 }
 
-function scoreDenseRoute(
-  routeDense: number[],
-  matrix: CostMatrix,
-  bonusValueByDense: ReadonlyMap<number, number>,
-): { gross: number; collected: number } {
-  const { data } = matrix
+function normalizeBonuses(
+  bonuses: SolveInput['bonuses'],
+  byId: ReadonlyMap<number, unknown>,
+  forbiddenSet: ReadonlySet<number>,
+  startPlanetId: number,
+): NormalizedBonus[] {
+  const merged = new Map<number, number>()
 
-  let gross = 0
+  for (const b of bonuses) {
+    if (!byId.has(b.planetId)) continue
+    if (b.value <= 0) continue
+    if (forbiddenSet.has(b.planetId)) continue
+    if (b.planetId === startPlanetId) continue
 
-  for (let i = 0; i < routeDense.length - 1; i++) {
-    gross += data[routeDense[i] * matrix.n + routeDense[i + 1]]
+    merged.set(b.planetId, (merged.get(b.planetId) ?? 0) + b.value)
   }
 
-  let collected = 0
-  const seenBonus = new Set<number>()
-
-  for (const idx of routeDense) {
-    if (seenBonus.has(idx)) continue
-
-    const value = bonusValueByDense.get(idx)
-
-    if (value !== undefined) {
-      collected += value
-      seenBonus.add(idx)
-    }
-  }
-
-  return { gross, collected }
+  return [...merged.entries()].map(([planetId, value]) => ({
+    planetId,
+    value,
+  }))
 }
 
-/**
- * Concatenates shortest paths between consecutive forced stops.
- *
- * Valid only if the resulting physical route is simple, except for the final
- * return to the start.
- */
-function concatShortestPathStops(args: {
-  stops: number[]
-  sp: AllPairsSP
-  forbiddenDenseSet: ReadonlySet<number>
-  matrix: CostMatrix
-  bonusValueByDense: ReadonlyMap<number, number>
-}): RealizedRoute | null {
-  const {
-    stops,
-    sp,
-    forbiddenDenseSet,
-    matrix,
-    bonusValueByDense,
-  } = args
-
-  if (stops.length < 2) return null
-
-  const startDense = stops[0]
-  const routeDense: number[] = []
-
-  for (let i = 0; i < stops.length - 1; i++) {
-    const src = stops[i]
-    const dst = stops[i + 1]
-
-    const path = sp.spPath.get(src)?.[dst]
-
-    if (!path || path.length === 0) {
-      return null
-    }
-
-    if (i === 0) {
-      routeDense.push(...path)
-    } else {
-      routeDense.push(...path.slice(1))
-    }
-  }
-
-  if (routeDense.length === 0) return null
-  if (routeDense[0] !== startDense) return null
-  if (routeDense[routeDense.length - 1] !== startDense) return null
-
-  /**
-   * Validate simple physical route.
-   *
-   * Only allowed duplicate is the final return to the start.
-   */
-  const seen = new Set<number>()
-
-  for (let i = 0; i < routeDense.length; i++) {
-    const node = routeDense[i]
-
-    if (forbiddenDenseSet.has(node)) {
-      return null
-    }
-
-    if (seen.has(node)) {
-      const isFinalReturnToStart =
-        i === routeDense.length - 1 && node === startDense
-
-      if (!isFinalReturnToStart) {
-        return null
-      }
-    }
-
-    seen.add(node)
-  }
-
-  const { gross, collected } = scoreDenseRoute(
-    routeDense,
-    matrix,
-    bonusValueByDense,
-  )
-
-  return {
-    route: routeDense,
-    gross,
-    collected,
-  }
-}
-
-/**
- * Fast realization:
- *
- * For a metric-closure ordering, concatenate the already-computed shortest paths
- * between consecutive forced stops.
- */
-function realizeOrderingByShortestPathConcat(
-  ordering: number[],
-  forcedIdxs: number[],
-  sp: AllPairsSP,
-  baseForbidden: ReadonlySet<number>,
-  matrix: CostMatrix,
-  bonusValueByDense: ReadonlyMap<number, number>,
-): RealizedRoute | null {
-  const stops = ordering.map(i => forcedIdxs[i])
-
-  return concatShortestPathStops({
-    stops,
-    sp,
-    forbiddenDenseSet: baseForbidden,
-    matrix,
-    bonusValueByDense,
-  })
-}
-
-function shortestPathAvoiding(
-  matrix: CostMatrix,
-  src: number,
-  dst: number,
-  blockedInput: Uint8Array,
-): number[] | null {
-  const { n, data } = matrix
-
-  const blocked = new Uint8Array(blockedInput)
-
-  blocked[src] = 0
-  blocked[dst] = 0
-
-  const dist = new Float64Array(n)
-  dist.fill(Infinity)
-
-  const prev = new Int32Array(n)
-  prev.fill(-1)
-
-  const used = new Uint8Array(n)
-
-  dist[src] = 0
-
-  for (let iter = 0; iter < n; iter++) {
-    let u = -1
-    let best = Infinity
-
-    for (let i = 0; i < n; i++) {
-      if (used[i]) continue
-      if (blocked[i]) continue
-
-      const d = dist[i]
-
-      if (d < best) {
-        best = d
-        u = i
-      }
-    }
-
-    if (u === -1) break
-    if (u === dst) break
-
-    used[u] = 1
-
-    const base = u * n
-
-    for (let v = 0; v < n; v++) {
-      if (used[v]) continue
-      if (blocked[v]) continue
-      if (v === u) continue
-
-      const nd = best + data[base + v]
-
-      if (nd < dist[v]) {
-        dist[v] = nd
-        prev[v] = u
-      }
-    }
-  }
-
-  if (!Number.isFinite(dist[dst])) {
-    return null
-  }
-
-  const path: number[] = []
-  let cur = dst
-
-  while (cur !== -1) {
-    path.unshift(cur)
-
-    if (cur === src) break
-
-    cur = prev[cur]
-  }
-
-  if (path.length === 0) return null
-  if (path[0] !== src) return null
-
-  return path
-}
-
-/**
- * Greedy physical realization for a fixed forced ordering.
- *
- * This is cheaper than realizeOrderingDP(), but stronger than plain SP concat:
- *
- * - avoids forbidden planets
- * - avoids already visited planets
- * - prevents visiting future forced stops too early
- * - prevents returning to start before the final segment
- *
- * This is targeted for Challenge-92-style small bonus cases.
- */
-function realizeOrderingGreedyAvoiding(
-  ordering: number[],
-  forcedIdxs: number[],
-  baseForbidden: ReadonlySet<number>,
-  matrix: CostMatrix,
-  bonusValueByDense: ReadonlyMap<number, number>,
-): RealizedRoute | null {
-  const { n } = matrix
-
-  const stops = ordering.map(i => forcedIdxs[i])
-
-  if (stops.length < 2) return null
-
-  const startDense = stops[0]
-
-  if (stops[stops.length - 1] !== startDense) {
-    return null
-  }
-
-  const forced = new Uint8Array(n)
-
-  for (const idx of stops) {
-    forced[idx] = 1
-  }
-
-  const baseBlocked = new Uint8Array(n)
-
-  for (const idx of baseForbidden) {
-    if (idx >= 0 && idx < n) {
-      baseBlocked[idx] = 1
-    }
-  }
-
-  const seen = new Uint8Array(n)
-  const routeDense: number[] = [startDense]
-
-  seen[startDense] = 1
-
-  for (let seg = 0; seg < stops.length - 1; seg++) {
-    const src = stops[seg]
-    const dst = stops[seg + 1]
-    const isFinalSegment = seg === stops.length - 2
-
-    const blocked = new Uint8Array(baseBlocked)
-
-    /**
-     * Block already visited planets.
-     *
-     * Exceptions:
-     * - current source
-     * - final return to start on final segment
-     */
-    for (let i = 0; i < n; i++) {
-      if (seen[i]) {
-        blocked[i] = 1
-      }
-    }
-
-    blocked[src] = 0
-
-    if (isFinalSegment && dst === startDense) {
-      blocked[dst] = 0
-    }
-
-    /**
-     * Block forced stops that are not this segment destination.
-     *
-     * This prevents:
-     * - visiting mandatory/bonus keys out of this candidate order
-     * - returning to start too early
-     */
-    for (let i = 0; i < n; i++) {
-      if (!forced[i]) continue
-
-      if (i === src) continue
-      if (i === dst) continue
-
-      blocked[i] = 1
-    }
-
-    const segmentPath = shortestPathAvoiding(
-      matrix,
-      src,
-      dst,
-      blocked,
-    )
-
-    if (segmentPath === null || segmentPath.length < 2) {
-      return null
-    }
-
-    for (let i = 1; i < segmentPath.length; i++) {
-      const node = segmentPath[i]
-
-      const isFinalReturnToStart =
-        isFinalSegment &&
-        i === segmentPath.length - 1 &&
-        node === startDense
-
-      if (seen[node] && !isFinalReturnToStart) {
-        return null
-      }
-
-      routeDense.push(node)
-
-      if (!isFinalReturnToStart) {
-        seen[node] = 1
-      }
-    }
-  }
-
-  if (routeDense[0] !== startDense) return null
-  if (routeDense[routeDense.length - 1] !== startDense) return null
-
-  const { gross, collected } = scoreDenseRoute(
-    routeDense,
-    matrix,
-    bonusValueByDense,
-  )
-
-  return {
-    route: routeDense,
-    gross,
-    collected,
-  }
-}
-
-/**
- * Fast path/baseline for mandatory-only challenges.
- *
- * For small cases this can be returned directly.
- * For larger cases it is only used as an upper bound because independent
- * shortest-path concatenation can be suboptimal globally.
- */
-function solveMandatoryOnlyByShortestPathPermutations(args: {
-  startIdx: number
-  mandatoryIdxs: number[]
-  sp: AllPairsSP
-  forbiddenDenseSet: ReadonlySet<number>
-  matrix: CostMatrix
-  bonusValueByDense: ReadonlyMap<number, number>
-}): RealizedRoute | null {
-  const {
-    startIdx,
-    mandatoryIdxs,
-    sp,
-    forbiddenDenseSet,
-    matrix,
-    bonusValueByDense,
-  } = args
-
-  if (mandatoryIdxs.length > MANDATORY_ONLY_INITIAL_BOUND_LIMIT) {
-    return null
-  }
-
-  if (mandatoryIdxs.length === 0) {
-    return {
-      route: [startIdx, startIdx],
-      gross: 0,
-      collected: bonusValueByDense.get(startIdx) ?? 0,
-    }
-  }
-
-  let best: RealizedRoute | null = null
-  let bestEffective = Infinity
-
-  const used = new Uint8Array(mandatoryIdxs.length)
-  const perm: number[] = []
-
-  function dfs(): void {
-    if (perm.length === mandatoryIdxs.length) {
-      const stops = [
-        startIdx,
-        ...perm,
-        startIdx,
-      ]
-
-      const realized = concatShortestPathStops({
-        stops,
-        sp,
-        forbiddenDenseSet,
-        matrix,
-        bonusValueByDense,
-      })
-
-      if (realized === null) {
-        return
-      }
-
-      const effective = realized.gross - realized.collected
-
-      if (effective < bestEffective) {
-        bestEffective = effective
-        best = realized
-      }
-
-      return
-    }
-
-    for (let i = 0; i < mandatoryIdxs.length; i++) {
-      if (used[i]) continue
-
-      used[i] = 1
-      perm.push(mandatoryIdxs[i])
-
-      dfs()
-
-      perm.pop()
-      used[i] = 0
-    }
-  }
-
-  dfs()
-
-  return best
-}
-
-// Find transit nodes that appear as intermediates on 2+ segment SP paths in this ordering.
 function identifyKeyNodes(
   ordering: number[],
   forcedIdxs: number[],
   sp: AllPairsSP,
-  stopSet: ReadonlySet<number>,
+  forcedSet: ReadonlySet<number>,
+  n: number,
+  segCount: number,
 ): number[] {
   const freq = new Map<number, number>()
 
@@ -538,42 +90,148 @@ function identifyKeyNodes(
     for (let k = 1; k < path.length - 1; k++) {
       const node = path[k]
 
-      if (stopSet.has(node)) continue
+      if (forcedSet.has(node)) continue
 
       freq.set(node, (freq.get(node) ?? 0) + 1)
     }
   }
 
+  const maxK = Math.max(
+    0,
+    Math.floor(Math.log2(MAX_DP_STATES / ((segCount + 1) * n))),
+  )
+
   return [...freq.entries()]
     .filter(([, f]) => f >= 2)
     .sort((a, b) => b[1] - a[1])
-    .slice(0, 8)
+    .slice(0, maxK)
     .map(([node]) => node)
+}
+
+function hpush(dpw: DpWork, p: number, v: number): void {
+  if (dpw.hSz >= HEAP_CAP) return
+
+  let i = dpw.hSz++
+
+  dpw.hPri[i] = p
+  dpw.hVal[i] = v
+
+  while (i > 0) {
+    const par = (i - 1) >> 1
+
+    if (dpw.hPri[par] <= dpw.hPri[i]) break
+
+    const tp = dpw.hPri[par]
+    dpw.hPri[par] = dpw.hPri[i]
+    dpw.hPri[i] = tp
+
+    const tv = dpw.hVal[par]
+    dpw.hVal[par] = dpw.hVal[i]
+    dpw.hVal[i] = tv
+
+    i = par
+  }
+}
+
+function hpop(dpw: DpWork): number {
+  const rv = dpw.hVal[0]
+  const last = --dpw.hSz
+
+  if (last > 0) {
+    dpw.hPri[0] = dpw.hPri[last]
+    dpw.hVal[0] = dpw.hVal[last]
+
+    let i = 0
+
+    while (true) {
+      let sm = i
+      const l = 2 * i + 1
+      const r = 2 * i + 2
+
+      if (l < dpw.hSz && dpw.hPri[l] < dpw.hPri[sm]) sm = l
+      if (r < dpw.hSz && dpw.hPri[r] < dpw.hPri[sm]) sm = r
+
+      if (sm === i) break
+
+      const tp = dpw.hPri[sm]
+      dpw.hPri[sm] = dpw.hPri[i]
+      dpw.hPri[i] = tp
+
+      const tv = dpw.hVal[sm]
+      dpw.hVal[sm] = dpw.hVal[i]
+      dpw.hVal[i] = tv
+
+      i = sm
+    }
+  }
+
+  return rv
 }
 
 function realizeOrderingDP(
   ordering: number[],
   forcedIdxs: number[],
   sp: AllPairsSP,
-  baseForbidden: ReadonlySet<number>,
   matrix: CostMatrix,
-  bonusValueByDense: ReadonlyMap<number, number>,
-): RealizedRoute | null {
+  bonusValueArr: Float64Array,
+  dpw: DpWork,
+  grossCutoff: number,
+): { route: number[]; gross: number; collected: number } | null {
   const { n, data } = matrix
-
   const segCount = ordering.length - 1
   const stops = ordering.map(i => forcedIdxs[i])
   const startDense = stops[0]
 
-  const stopSet = new Set(stops)
-  const keyNodes = identifyKeyNodes(ordering, forcedIdxs, sp, stopSet)
+  const forcedSet = new Set(forcedIdxs)
+  const keyNodes = identifyKeyNodes(
+    ordering,
+    forcedIdxs,
+    sp,
+    forcedSet,
+    n,
+    segCount,
+  )
 
   const K = keyNodes.length
   const maskCount = 1 << K
 
-  const keyBit = new Map<number, number>()
+  const keyBit = dpw.keyBit
+
   for (let k = 0; k < K; k++) {
-    keyBit.set(keyNodes[k], 1 << k)
+    keyBit[keyNodes[k]] = 1 << k
+  }
+
+  const stopOf = dpw.stopOf
+
+  /**
+   * stopOf[v] = i means v is stops[i].
+   *
+   * Start appears at stops[0] and stops[segCount]. We store it as segCount so
+   * it behaves like a future forced stop until the final return segment.
+   */
+  for (let i = 1; i < segCount; i++) {
+    stopOf[stops[i]] = i
+  }
+
+  stopOf[startDense] = segCount
+
+  /**
+   * Lower-bound rows and suffix costs for internal B&B pruning.
+   *
+   * hRemain = shortest path from current planet to next forced stop
+   *           + lower bound through remaining forced stops.
+   */
+  const spRows: (Float64Array | undefined)[] = new Array(segCount)
+  const suffix = new Float64Array(segCount + 1)
+
+  for (let s = 0; s < segCount; s++) {
+    spRows[s] = sp.spCost.get(stops[s + 1])
+  }
+
+  for (let s = segCount - 1; s >= 1; s--) {
+    suffix[s] =
+      (sp.spCost.get(stops[s])?.[stops[s + 1]] ?? 0) +
+      suffix[s + 1]
   }
 
   const encode = (seg: number, planet: number, mask: number): number =>
@@ -581,41 +239,33 @@ function realizeOrderingDP(
 
   const totalStates = (segCount + 1) * n * maskCount
 
-  const dist = new Float64Array(totalStates)
-  dist.fill(Infinity)
-
-  const parent = new Int32Array(totalStates)
-  parent.fill(-2)
-
-  /**
-   * Forced stop lookup.
-   *
-   * Start appears twice: first and last. Let the final occurrence win, so start
-   * cannot be used as a premature transit node.
-   */
-  const stopPos = new Int32Array(n)
-  stopPos.fill(-1)
-
-  for (let i = 0; i < stops.length; i++) {
-    stopPos[stops[i]] = i
+  if (totalStates > dpw.dist.length) {
+    for (let i = 1; i < segCount; i++) stopOf[stops[i]] = -1
+    stopOf[startDense] = -1
+    for (let k = 0; k < K; k++) keyBit[keyNodes[k]] = 0
+    return null
   }
 
-  const initialMask = keyBit.get(startDense) ?? 0
-  const startState = encode(0, startDense, initialMask)
+  const dist = dpw.dist
+  const parent = dpw.parent
+
+  dist.fill(Infinity, 0, totalStates)
+  parent.fill(-2, 0, totalStates)
+
+  dpw.hSz = 0
+
+  const startState = encode(0, startDense, 0)
 
   dist[startState] = 0
   parent[startState] = -1
 
-  const terminalPlanet = stops[segCount]
+  hpush(dpw, 0, startState)
 
-  let bestDist = Infinity
   let bestState = -1
 
-  const pq = new MinHeap<number>()
-  pq.push(0, startState)
-
-  while (pq.size > 0) {
-    const [d, state] = pq.pop()!
+  while (dpw.hSz > 0) {
+    const d = dpw.hPri[0]
+    const state = hpop(dpw)
 
     if (d > dist[state]) continue
 
@@ -624,34 +274,39 @@ function realizeOrderingDP(
     const planet = rem % n
     const seg = (rem / n) | 0
 
-    /**
-     * Dijkstra early exit.
-     *
-     * The first terminal state popped is globally optimal.
-     */
-    if (seg === segCount && planet === terminalPlanet) {
-      bestDist = d
+    if (seg === segCount) {
       bestState = state
       break
     }
 
-    if (seg === segCount) continue
+    /**
+     * Internal B&B pruning.
+     *
+     * If current gross plus optimistic remaining gross cannot beat the current
+     * gross cutoff, skip expanding this state.
+     */
+    const hRemain =
+      (spRows[seg]?.[planet] ?? Infinity) +
+      suffix[seg + 1]
+
+    if (d + hRemain >= grossCutoff) continue
 
     const nextStop = stops[seg + 1]
     const base = planet * n
 
     for (let w = 0; w < n; w++) {
       if (w === planet) continue
-      if (baseForbidden.has(w)) continue
+      if (dpw.forbArr[w]) continue
 
-      const wBit = keyBit.get(w) ?? 0
+      const wBit = keyBit[w]
+
       if (wBit && (mask & wBit)) continue
 
-      const pos = stopPos[w]
+      const ws = stopOf[w]
 
-      if (pos !== -1) {
-        if (pos <= seg) continue
-        if (pos >= seg + 2) continue
+      if (ws !== -1) {
+        if (ws <= seg) continue
+        if (ws > seg + 1) continue
       }
 
       const newMask = mask | wBit
@@ -663,54 +318,196 @@ function realizeOrderingDP(
       if (nd < dist[ns]) {
         dist[ns] = nd
         parent[ns] = state
-        pq.push(nd, ns)
+        hpush(dpw, nd, ns)
       }
     }
   }
 
-  if (!Number.isFinite(bestDist) || bestState === -1) return null
+  for (let i = 1; i < segCount; i++) {
+    stopOf[stops[i]] = -1
+  }
+
+  stopOf[startDense] = -1
+
+  for (let k = 0; k < K; k++) {
+    keyBit[keyNodes[k]] = 0
+  }
+
+  if (bestState === -1) return null
 
   const routeDense: number[] = []
 
   let cur = bestState
+
   while (cur !== -1) {
     routeDense.unshift(((cur / maskCount) | 0) % n)
     cur = parent[cur]
   }
 
   /**
-   * Simple route validation.
+   * Verify simple physical route.
    *
-   * Only allowed duplicate: final return to start.
+   * Only allowed duplicate is the final return to start.
    */
   const seen = new Set<number>()
 
   for (let k = 0; k < routeDense.length; k++) {
     const v = routeDense[k]
+    const isEnd = k === 0 || k === routeDense.length - 1
 
-    if (seen.has(v)) {
-      const isFinalReturnToStart =
-        k === routeDense.length - 1 && v === startDense
-
-      if (!isFinalReturnToStart) {
-        return null
-      }
+    if (seen.has(v) && !(isEnd && v === startDense)) {
+      return null
     }
 
     seen.add(v)
   }
 
-  const { gross, collected } = scoreDenseRoute(
-    routeDense,
-    matrix,
-    bonusValueByDense,
-  )
+  let gross = 0
+
+  for (let k = 0; k < routeDense.length - 1; k++) {
+    gross += data[routeDense[k] * n + routeDense[k + 1]]
+  }
+
+  /**
+   * Duplicate bonus entries have already been merged into bonusValueArr.
+   *
+   * Since the physical route is simple except for the final return to start,
+   * this direct sum is safe. Start bonuses are filtered out.
+   */
+  let collected = 0
+
+  for (const idx of routeDense) {
+    collected += bonusValueArr[idx]
+  }
 
   return {
     route: routeDense,
     gross,
     collected,
   }
+}
+
+function orienteeringDPCandidates(
+  allKeyDense: number[],
+  mandatoryCount: number,
+  sp: AllPairsSP,
+  bonusValueArr: Float64Array,
+): { bonusMask: number; lbCost: number; dpKeySeq: number[] }[] {
+  const nk = allKeyDense.length
+
+  if (nk > 30) {
+    throw new Error(`Too many key nodes for bitmask DP: ${nk}. Maximum supported is 30.`)
+  }
+
+  const stateCount = (1 << nk) * nk
+  const dp = new Float64Array(stateCount).fill(Infinity)
+  const par = new Int32Array(stateCount).fill(-1)
+
+  const mandatoryBits = (2 << mandatoryCount) - 2
+  const bonusBitOffset = 1 + mandatoryCount
+
+  /**
+   * mask = 1 means start visited.
+   * v = 0 means currently at start.
+   */
+  dp[nk] = 0
+
+  for (let mask = 1; mask < (1 << nk); mask++) {
+    if (!(mask & 1)) continue
+
+    for (let v = 0; v < nk; v++) {
+      if (!(mask & (1 << v))) continue
+
+      const cur = dp[mask * nk + v]
+
+      if (!Number.isFinite(cur)) continue
+
+      for (let u = 1; u < nk; u++) {
+        if (mask & (1 << u)) continue
+
+        const cost = sp.spCost.get(allKeyDense[v])?.[allKeyDense[u]]
+
+        if (cost === undefined || !Number.isFinite(cost)) continue
+
+        /**
+         * bonusValueArr includes mandatory bonus values too.
+         *
+         * Therefore lbCost is already effective-fuel-like:
+         *
+         *   metric gross - selected/mandatory bonus credits
+         */
+        const bonus = bonusValueArr[allKeyDense[u]]
+        const nd = cur + cost - bonus
+        const ns = (mask | (1 << u)) * nk + u
+
+        if (nd < dp[ns]) {
+          dp[ns] = nd
+          par[ns] = mask * nk + v
+        }
+      }
+    }
+  }
+
+  const bonusMaskBest = new Map<number, { lbCost: number; state: number }>()
+
+  for (let mask = 1; mask < (1 << nk); mask++) {
+    if ((mask & mandatoryBits) !== mandatoryBits) continue
+
+    for (let v = 0; v < nk; v++) {
+      if (!(mask & (1 << v))) continue
+
+      const cur = dp[mask * nk + v]
+
+      if (!Number.isFinite(cur)) continue
+
+      const ret =
+        v === 0
+          ? 0
+          : sp.spCost.get(allKeyDense[v])?.[allKeyDense[0]] ?? Infinity
+
+      if (!Number.isFinite(ret)) continue
+
+      const total = cur + ret
+      const bonusMask = mask >> bonusBitOffset
+      const existing = bonusMaskBest.get(bonusMask)
+
+      if (!existing || total < existing.lbCost) {
+        bonusMaskBest.set(bonusMask, {
+          lbCost: total,
+          state: mask * nk + v,
+        })
+      }
+    }
+  }
+
+  const results: { bonusMask: number; lbCost: number; dpKeySeq: number[] }[] = []
+
+  for (const [bonusMask, { lbCost, state }] of bonusMaskBest) {
+    const seq: number[] = []
+    let cur = state
+
+    while (cur !== -1) {
+      seq.unshift(cur % nk)
+      cur = par[cur]
+    }
+
+    seq.push(0)
+
+    results.push({
+      bonusMask,
+      lbCost,
+      dpKeySeq: seq,
+    })
+  }
+
+  results.sort((a, b) => {
+    if (a.bonusMask === 0 && b.bonusMask !== 0) return -1
+    if (b.bonusMask === 0 && a.bonusMask !== 0) return 1
+
+    return a.lbCost - b.lbCost
+  })
+
+  return results
 }
 
 export function heldKarpSolve(input: SolveInput): SolveResult {
@@ -723,7 +520,7 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
     bonuses,
   } = input
 
-  const byId = new Map<number, Planet>(planets.map((p) => [p.id, p]))
+  const byId = new Map(planets.map(p => [p.id, p]))
 
   if (!byId.has(startPlanetId)) {
     return fail(`Start planet ${startPlanetId} not found`)
@@ -736,7 +533,7 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
   }
 
   const mandatoryUnique = [
-    ...new Set(mandatoryIds.filter((id: number) => id !== startPlanetId)),
+    ...new Set(mandatoryIds.filter(id => id !== startPlanetId)),
   ]
 
   for (const id of mandatoryUnique) {
@@ -749,15 +546,14 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
     }
   }
 
-  const rawValidBonuses = bonuses.filter(
-    (b: Bonus) =>
-      byId.has(b.planetId) &&
-      b.value > 0 &&
-      !forbiddenSet.has(b.planetId) &&
-      b.planetId !== startPlanetId,
+  const validBonuses = normalizeBonuses(
+    bonuses,
+    byId,
+    forbiddenSet,
+    startPlanetId,
   )
 
-  if (mandatoryUnique.length === 0 && rawValidBonuses.length === 0) {
+  if (mandatoryUnique.length === 0 && validBonuses.length === 0) {
     const start = byId.get(startPlanetId)!
 
     return {
@@ -769,29 +565,30 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
     }
   }
 
-  const deadline = Date.now() + TIMEOUT_MS
-
   const matrix = buildCostMatrix(planets, routes)
-  const { idToIdx, idxToId } = matrix
+  const { idToIdx, idxToId, n } = matrix
 
   const startIdx = idToIdx.get(startPlanetId)!
 
   const forbiddenDenseSet = new Set(
-    [...forbiddenSet].flatMap((id: number) => {
+    [...forbiddenSet].flatMap(id => {
       const i = idToIdx.get(id)
       return i !== undefined ? [i] : []
     }),
   )
 
-  const mandatoryIdxs = mandatoryUnique.map((id: number) => idToIdx.get(id)!)
+  const mandatoryIdxs = mandatoryUnique.map(id => idToIdx.get(id)!)
   const mandatoryDenseSet = new Set(mandatoryIdxs)
 
   /**
-   * Merge duplicate bonus entries by dense planet index.
+   * Dense bonus maps.
+   *
+   * bonusValueByDense is useful for debugging/readability.
+   * bonusValueArr is used in hot paths to avoid Map.get().
    */
   const bonusValueByDense = new Map<number, number>()
 
-  for (const b of rawValidBonuses) {
+  for (const b of validBonuses) {
     const idx = idToIdx.get(b.planetId)
 
     if (idx === undefined) continue
@@ -799,28 +596,22 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
     bonusValueByDense.set(idx, (bonusValueByDense.get(idx) ?? 0) + b.value)
   }
 
-  /**
- * Final scoring collects bonuses from any physically visited planet, not only
- * bonuses explicitly selected as candidate keys.
- *
- * This is used only for safe gross caps in small concat-only enumeration.
-  */
-  const totalCollectableBonusCredit = [...bonusValueByDense.values()]
-    .reduce((sum, value) => sum + value, 0)
+  const bonusValueArr = new Float64Array(n)
+
+  for (const [idx, value] of bonusValueByDense) {
+    bonusValueArr[idx] = value
+  }
 
   /**
-   * Optional bonuses exclude:
+   * Optional bonuses exclude mandatory planets.
    *
-   * - start
-   * - mandatory planets
-   *
-   * Bonuses on mandatory planets are guaranteed and credited in final route
-   * scoring, but they should not become optional DP keys.
+   * Bonuses on mandatory planets are guaranteed and credited in route scoring,
+   * but they should not become optional bitmask decision keys.
    */
   const optionalBonusDenseIdxs: number[] = []
   const optionalBonusValues: number[] = []
 
-  for (const [idx, value] of bonusValueByDense.entries()) {
+  for (const [idx, value] of bonusValueByDense) {
     if (idx === startIdx) continue
     if (mandatoryDenseSet.has(idx)) continue
 
@@ -828,34 +619,26 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
     optionalBonusValues.push(value)
   }
 
+  let guaranteedBonusCredit = 0
+
+  for (const idx of mandatoryIdxs) {
+    guaranteedBonusCredit += bonusValueArr[idx]
+  }
+
   /**
-   * Fixed key layout:
+   * Key layout:
    *
-   *   key 0 = start
-   *   keys 1..M = mandatory
-   *   keys 1+M..1+M+B = optional bonuses
+   *   0 = start
+   *   1..M = mandatory stops
+   *   M+1.. = optional bonus stops
    */
-  const keyIdxs = [
+  const allKeyDense = [
     startIdx,
     ...mandatoryIdxs,
     ...optionalBonusDenseIdxs,
   ]
 
-  const keyCount = keyIdxs.length
-  const mandatoryCount = mandatoryIdxs.length
-  const bonusCount = optionalBonusDenseIdxs.length
-
-  if (keyCount > 30) {
-    return fail(`Too many key nodes for bitmask DP: ${keyCount}. Maximum supported is 30.`)
-  }
-
-  let guaranteedBonusCredit = 0
-
-  for (const idx of mandatoryIdxs) {
-    guaranteedBonusCredit += bonusValueByDense.get(idx) ?? 0
-  }
-
-  const sp = computeAllPairsSP(matrix, keyIdxs, forbiddenDenseSet)
+  const sp = computeAllPairsSP(matrix, allKeyDense, forbiddenDenseSet)
 
   for (const a of [startIdx, ...mandatoryIdxs]) {
     for (const b of [startIdx, ...mandatoryIdxs]) {
@@ -867,49 +650,22 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
     }
   }
 
-  /**
-   * Mandatory-only shortcut/baseline.
-   *
-   * For very small mandatory-only challenges, we can return immediately.
-   *
-   * For larger mandatory-only challenges, do NOT return this result because it
-   * may be suboptimal. Challenge 97 is the known counterexample.
-   *
-   * But we still keep it as an initial upper bound to prune the general solver.
-   */
-  let initialBest: RealizedRoute | null = null
-
-  if (
-    optionalBonusDenseIdxs.length === 0 &&
-    mandatoryIdxs.length <= MANDATORY_ONLY_INITIAL_BOUND_LIMIT
-  ) {
-    const mandatoryOnlyResult = solveMandatoryOnlyByShortestPathPermutations({
-      startIdx,
-      mandatoryIdxs,
-      sp,
-      forbiddenDenseSet,
-      matrix,
-      bonusValueByDense,
-    })
-
-    if (mandatoryOnlyResult !== null) {
-      if (mandatoryIdxs.length <= MANDATORY_ONLY_SHORTEST_PATH_FAST_LIMIT) {
-        const orderedRoute = mandatoryOnlyResult.route.map(
-          denseIdx => byId.get(idxToId[denseIdx])!,
-        )
-
-        return {
-          success: true,
-          orderedRoute,
-          effectiveFuel: mandatoryOnlyResult.gross - mandatoryOnlyResult.collected,
-          grossFuel: mandatoryOnlyResult.gross,
-          collectedBonus: mandatoryOnlyResult.collected,
-        }
-      }
-
-      initialBest = mandatoryOnlyResult
-    }
+  const dpw: DpWork = {
+    dist: new Float64Array(MAX_DP_STATES),
+    parent: new Int32Array(MAX_DP_STATES),
+    stopOf: new Int32Array(n).fill(-1),
+    keyBit: new Int32Array(n),
+    forbArr: new Uint8Array(n),
+    hPri: new Float64Array(HEAP_CAP),
+    hVal: new Int32Array(HEAP_CAP),
+    hSz: 0,
   }
+
+  for (const idx of forbiddenDenseSet) {
+    dpw.forbArr[idx] = 1
+  }
+
+  const deadline = Date.now() + TIMEOUT_MS
 
   interface Best {
     effectiveFuel: number
@@ -920,356 +676,154 @@ export function heldKarpSolve(input: SolveInput): SolveResult {
   }
 
   const best: Best = {
-    effectiveFuel:
-      initialBest !== null
-        ? initialBest.gross - initialBest.collected
-        : Infinity,
-    route: initialBest?.route ?? null,
-    gross: initialBest?.gross ?? 0,
-    collected: initialBest?.collected ?? 0,
+    effectiveFuel: Infinity,
+    route: null,
+    gross: 0,
+    collected: 0,
     timedOut: false,
   }
 
-  const keyCosts = new Float64Array(keyCount * keyCount)
-  keyCosts.fill(Infinity)
+  const bonusCandidates = orienteeringDPCandidates(
+    allKeyDense,
+    mandatoryIdxs.length,
+    sp,
+    bonusValueArr,
+  )
 
-  for (let i = 0; i < keyCount; i++) {
-    const row = sp.spCost.get(keyIdxs[i])
-    if (!row) continue
-
-    for (let j = 0; j < keyCount; j++) {
-      keyCosts[i * keyCount + j] = row[keyIdxs[j]]
-    }
-  }
-
-  let candidates
-
-  try {
-    candidates = orienteeringDPCandidates({
-      keyCount,
-      mandatoryCount,
-      bonusCount,
-      costs: keyCosts,
-      bonusValues: new Float64Array(optionalBonusValues),
-    })
-  } catch (err) {
-    return fail(err instanceof Error ? err.message : String(err))
-  }
-
-  /*const debugStats = {
-    keyCount,
-    mandatoryCount,
-    bonusCount,
-    candidateCount: candidates.length,
-    useSmallBonusCandidateOnly: false,
-    hkOrderingCount: 0,
-    concatSuccessCount: 0,
-    concatFailCount: 0,
-    realizeDPCallCount: 0,
-    realizeDPSuccessCount: 0,
-    bestUpdateCount: 0,
-  }*/
-
- /**
- * Candidate ordering:
- *
- * 1. Empty subset first: gives a quick mandatory-route baseline.
- * 2. For small bonus-count exact cases, try full-bonus subset early.
- *    Challenge 92 needs both bonuses and benefits from this.
- * 3. Large subsets next: use DP fallback, avoids blocking on exact HK.
- * 4. Then promising lower-bound candidates.
- */
- const forcedLenForBonusMask = (bonusMask: number): number =>
-  1 + mandatoryCount + popcount(bonusMask)
-
-  candidates.sort((a, b) => {
-    if (a.bonusMask === 0) return -1
-    if (b.bonusMask === 0) return 1
-
-    const fa = forcedLenForBonusMask(a.bonusMask)
-    const fb = forcedLenForBonusMask(b.bonusMask)
-
-    const aLarge = fa > EXACT_ENUMERATION_LIMIT
-    const bLarge = fb > EXACT_ENUMERATION_LIMIT
-
-    if (aLarge !== bLarge) return aLarge ? -1 : 1
-
-    const ae = a.lbEffective - guaranteedBonusCredit
-    const be = b.lbEffective - guaranteedBonusCredit
-
-    return ae - be
-  })
-
-  /**
-  * Small bonus mode.
-  *
-  * For keyCount <= 8, use the original one-candidate-per-subset shortcut.
-  *
-  * Challenge 86 depends on this for speed.
-  *
-  * Challenge 92 also enters this mode, but receives an additional targeted
-  * greedy enumeration repair below.
-  */
-  const useSmallBonusCandidateOnly =
-  bonusCount > 0 &&
-  keyCount <= SMALL_BONUS_CANDIDATE_ONLY_KEY_LIMIT
-
-/**
- * Challenge-92-style repair mode.
- *
- * Challenge 92:
- *   mandatoryCount = 5
- *   bonusCount = 2
- *   keyCount = 8
- *
- * The single metric candidate is not enough, but full DP fallback per ordering
- * is too expensive. We use exact ordering enumeration with greedy avoiding
- * realization for only this small mandatory-heavy/low-bonus shape.
- */
-const useSmallBonusGreedyEnumeration =
-  useSmallBonusCandidateOnly &&
-  mandatoryCount >= 4 &&
-  bonusCount > 0 &&
-  bonusCount <= 3
-
-const allBonusMask =
-  bonusCount > 0
-    ? (1 << bonusCount) - 1
-    : 0
-
-  //debugStats.useSmallBonusCandidateOnly = useSmallBonusCandidateOnly
-
-
-  for (const candidate of candidates) {
+  for (const { bonusMask, lbCost, dpKeySeq } of bonusCandidates) {
     if (Date.now() >= deadline) {
       best.timedOut = true
       break
     }
-  
+
+    /**
+     * lbCost already includes:
+     *
+     * - mandatory bonus credit,
+     * - selected optional bonus credit.
+     */
+    if (lbCost >= best.effectiveFuel) break
+
     const selectedBonusIdxs: number[] = []
-  
-    for (let k = 0; k < bonusCount; k++) {
-      if (candidate.bonusMask & (1 << k)) {
-        selectedBonusIdxs.push(optionalBonusDenseIdxs[k])
+    let selectedOptionalBonusCredit = 0
+
+    for (let k = 0; k < optionalBonusDenseIdxs.length; k++) {
+      if (bonusMask & (1 << k)) {
+        const idx = optionalBonusDenseIdxs[k]
+        selectedBonusIdxs.push(idx)
+        selectedOptionalBonusCredit += optionalBonusValues[k]
       }
     }
-  
+
+    const totalSelectedCredit =
+      guaranteedBonusCredit +
+      selectedOptionalBonusCredit
+
     const forcedIdxs = [
       startIdx,
       ...mandatoryIdxs,
       ...selectedBonusIdxs,
     ]
-  
+
     const fLen = forcedIdxs.length
-  
-    /**
-     * Small bonus challenges:
-     *
-     * - Challenge 86 must stay fast: one metric candidate per subset.
-     * - Challenge 92 needs an extra repair search, but only for its small
-     *   mandatory-heavy / low-bonus shape.
-     */
-    if (useSmallBonusCandidateOnly) {
-      /**
-       * Original fast path.
-       *
-       * Important:
-       * candidate.ordering uses full key-node indices, so this must use keyIdxs,
-       * not forcedIdxs.
-       */
-      const adjustedLbEffective =
-        candidate.lbEffective -
-        guaranteedBonusCredit
-  
-      if (adjustedLbEffective < best.effectiveFuel) {
-        const fastResult = realizeOrderingByShortestPathConcat(
-          candidate.ordering,
-          keyIdxs,
-          sp,
-          forbiddenDenseSet,
-          matrix,
-          bonusValueByDense,
-        )
-  
-        const result =
-          fastResult ??
-          realizeOrderingDP(
-            candidate.ordering,
-            keyIdxs,
-            sp,
-            forbiddenDenseSet,
-            matrix,
-            bonusValueByDense,
-          )
-  
-        if (result !== null) {
-          const effective = result.gross - result.collected
-  
-          if (effective < best.effectiveFuel) {
-            best.effectiveFuel = effective
-            best.route = result.route
-            best.gross = result.gross
-            best.collected = result.collected
-          }
-        }
-      }
-  
-      /**
-       * Targeted Challenge-92 repair.
-       *
-       * This runs only for:
-       *
-       *   keyCount <= 8
-       *   mandatoryCount >= 4
-       *   bonusCount <= 3
-       *
-       * It enumerates only:
-       *
-       *   - empty bonus subset
-       *   - full bonus subset
-       *
-       * and realizes orderings with greedy avoiding, not expensive DP.
-       */
-      if (
-        useSmallBonusGreedyEnumeration &&
-        fLen <= EXACT_ENUMERATION_LIMIT &&
-        (candidate.bonusMask === 0 || candidate.bonusMask === allBonusMask)
-      ) {
-        const hkCosts = new Float64Array(fLen * fLen)
-        hkCosts.fill(Infinity)
-  
-        for (let i = 0; i < fLen; i++) {
-          const row = sp.spCost.get(forcedIdxs[i])
-          if (!row) continue
-  
-          for (let j = 0; j < fLen; j++) {
-            hkCosts[i * fLen + j] = row[forcedIdxs[j]]
-          }
-        }
-  
-        const maxGrossForSubset =
-          Number.isFinite(best.effectiveFuel)
-            ? best.effectiveFuel + totalCollectableBonusCredit
-            : Infinity
-  
-        for (const { ordering, cost: lbGross } of heldKarpGen(
-          fLen,
-          hkCosts,
-          maxGrossForSubset,
-        )) {
-          if (Date.now() >= deadline) {
-            best.timedOut = true
-            break
-          }
-  
-          /**
-           * Safe pruning:
-           *
-           * physical gross >= lbGross
-           * collected bonus <= totalCollectableBonusCredit
-           */
-          if (
-            Number.isFinite(best.effectiveFuel) &&
-            lbGross - totalCollectableBonusCredit >= best.effectiveFuel
-          ) {
-            break
-          }
-  
-          const result = realizeOrderingGreedyAvoiding(
-            ordering,
-            forcedIdxs,
-            forbiddenDenseSet,
-            matrix,
-            bonusValueByDense,
-          )
-  
-          if (result === null) continue
-  
-          const effective = result.gross - result.collected
-  
-          if (effective < best.effectiveFuel) {
-            best.effectiveFuel = effective
-            best.route = result.route
-            best.gross = result.gross
-            best.collected = result.collected
-          }
-        }
-  
-        if (best.timedOut) break
-      }
-  
-      continue
-    }
-  
-    /**
-     * Normal exact enumeration path.
-     *
-     * This is required for challenges like 90 and 91.
-     *
-     * Your current file accidentally bypasses this and treats these challenges
-     * like large single-candidate cases, which is why they became wrong.
-     */
-    if (fLen <= EXACT_ENUMERATION_LIMIT) {
+
+    const grossCutoff =
+      Number.isFinite(best.effectiveFuel)
+        ? best.effectiveFuel + totalSelectedCredit
+        : Infinity
+
+    if (fLen <= MAX_HK_N) {
       const hkCosts = new Float64Array(fLen * fLen)
-      hkCosts.fill(Infinity)
-  
+
       for (let i = 0; i < fLen; i++) {
         const row = sp.spCost.get(forcedIdxs[i])
+
         if (!row) continue
-  
+
         for (let j = 0; j < fLen; j++) {
           hkCosts[i * fLen + j] = row[forcedIdxs[j]]
         }
       }
-  
-      const maxGrossForSubset =
-        best.effectiveFuel +
-        candidate.bonusCredit +
-        guaranteedBonusCredit
-  
-      for (const { ordering, cost: lbGross } of heldKarpGen(
+
+      /**
+       * Warm start:
+       *
+       * Realize the orienteering-DP ordering first to establish a strong upper
+       * bound before enumerating many orderings.
+       */
+      {
+        const M = mandatoryIdxs.length
+        const kiToPos: number[] = new Array(allKeyDense.length)
+
+        for (let i = 0; i <= M; i++) {
+          kiToPos[i] = i
+        }
+
+        let bRank = 0
+
+        for (let b = 0; b < optionalBonusDenseIdxs.length; b++) {
+          if (bonusMask & (1 << b)) {
+            kiToPos[M + 1 + b] = M + 1 + bRank++
+          }
+        }
+
+        const dpOrdering = dpKeySeq.map(ki => kiToPos[ki])
+
+        const dpWarm = realizeOrderingDP(
+          dpOrdering,
+          forcedIdxs,
+          sp,
+          matrix,
+          bonusValueArr,
+          dpw,
+          grossCutoff,
+        )
+
+        if (dpWarm !== null) {
+          const dpEff = dpWarm.gross - dpWarm.collected
+
+          if (dpEff < best.effectiveFuel) {
+            best.effectiveFuel = dpEff
+            best.route = dpWarm.route
+            best.gross = dpWarm.gross
+            best.collected = dpWarm.collected
+          }
+        }
+      }
+
+      const updatedGrossCutoff = (): number =>
+        Number.isFinite(best.effectiveFuel)
+          ? best.effectiveFuel + totalSelectedCredit
+          : Infinity
+
+      for (const { ordering, cost: lbOrd } of heldKarpGen(
         fLen,
         hkCosts,
-        maxGrossForSubset,
+        updatedGrossCutoff(),
       )) {
         if (Date.now() >= deadline) {
           best.timedOut = true
           break
         }
-  
-        const lbEffective =
-          lbGross -
-          candidate.bonusCredit -
-          guaranteedBonusCredit
-  
-        if (lbEffective >= best.effectiveFuel) {
+
+        if (lbOrd - totalSelectedCredit >= best.effectiveFuel) {
           break
         }
-  
-        const fastResult = realizeOrderingByShortestPathConcat(
+
+        const result = realizeOrderingDP(
           ordering,
           forcedIdxs,
           sp,
-          forbiddenDenseSet,
           matrix,
-          bonusValueByDense,
+          bonusValueArr,
+          dpw,
+          updatedGrossCutoff(),
         )
-  
-        const result =
-          fastResult ??
-          realizeOrderingDP(
-            ordering,
-            forcedIdxs,
-            sp,
-            forbiddenDenseSet,
-            matrix,
-            bonusValueByDense,
-          )
-  
+
         if (result === null) continue
-  
+
         const effective = result.gross - result.collected
-  
+
         if (effective < best.effectiveFuel) {
           best.effectiveFuel = effective
           best.route = result.route
@@ -1277,55 +831,39 @@ const allBonusMask =
           best.collected = result.collected
         }
       }
-  
-      if (best.timedOut) break
     } else {
       /**
-       * Large subset:
+       * Large subset fallback:
        *
-       * Use DP-backtracked ordering. No factorial enumeration.
-       *
-       * This original pruning is important for Challenge 95 and 105.
+       * Use the DP-backtracked metric ordering for this bonus mask.
        */
-      const adjustedLbEffective =
-        candidate.lbEffective -
-        guaranteedBonusCredit
-  
-      if (adjustedLbEffective >= best.effectiveFuel) {
-        continue
-      }
-  
-      const fastResult = realizeOrderingByShortestPathConcat(
-        candidate.ordering,
-        keyIdxs,
+      const forcedSeq = dpKeySeq.slice(0, -1)
+      const forcedDpIdxs = forcedSeq.map(ki => allKeyDense[ki])
+      const ordering = forcedSeq.map((_, i) => i).concat([0])
+
+      const result = realizeOrderingDP(
+        ordering,
+        forcedDpIdxs,
         sp,
-        forbiddenDenseSet,
         matrix,
-        bonusValueByDense,
+        bonusValueArr,
+        dpw,
+        grossCutoff,
       )
-  
-      const result =
-        fastResult ??
-        realizeOrderingDP(
-          candidate.ordering,
-          keyIdxs,
-          sp,
-          forbiddenDenseSet,
-          matrix,
-          bonusValueByDense,
-        )
-  
-      if (result === null) continue
-  
-      const effective = result.gross - result.collected
-  
-      if (effective < best.effectiveFuel) {
-        best.effectiveFuel = effective
-        best.route = result.route
-        best.gross = result.gross
-        best.collected = result.collected
+
+      if (result !== null) {
+        const effective = result.gross - result.collected
+
+        if (effective < best.effectiveFuel) {
+          best.effectiveFuel = effective
+          best.route = result.route
+          best.gross = result.gross
+          best.collected = result.collected
+        }
       }
     }
+
+    if (best.timedOut) break
   }
 
   if (best.route === null) {
@@ -1334,9 +872,9 @@ const allBonusMask =
       : fail('No valid route found')
   }
 
-  const orderedRoute = best.route.map(denseIdx => byId.get(idxToId[denseIdx])!)
-
-  //console.log('solver stats', debugStats)
+  const orderedRoute = best.route.map(
+    denseIdx => byId.get(idxToId[denseIdx])!,
+  )
 
   return {
     success: true,
