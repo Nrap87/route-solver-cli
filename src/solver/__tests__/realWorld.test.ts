@@ -12,10 +12,10 @@ const ROUTES = ROUTES_RAW.map(adaptRoute)
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 
-/** Source of truth: bundled challenge rows with `realFuel` (exact filename on disk includes a space). */
+/** Bundled `realFuel` oracle (`challenges/challenges_all_with_fuel.json`). */
 const CHALLENGES_ALL_WITH_FUEL_JSON = join(
   __dirname,
-  '../../../challenges/challenges_all with_fuel.json',
+  '../../../challenges/challenges_all_with_fuel.json',
 )
 
 const SOLVER_TEST_MS = 16 * 60 * 1000
@@ -55,7 +55,7 @@ function loadFuelChallengesFromJson(): Array<{
 
 const FUEL_CHALLENGES = loadFuelChallengesFromJson()
 
-describe('challenges_all with_fuel.json', () => {
+describe('challenges_all_with_fuel.json', () => {
   it.each(FUEL_CHALLENGES)(
     '$id: $name — realFuel $realFuel CX',
     ({ row, realFuel }) => {
