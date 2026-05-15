@@ -2,6 +2,7 @@
 # (see `scripts/tsp_cron_service.ts` for allowed flag combinations).
 #
 # Required secrets: STAR_DELIVERY_BASE_URL, PLAYER_GUID, PLAYER_EMAIL
+# Cron `--no-log-file` skips per-run route_solver_cron_*.log files (see workflow input no_log_file).
 
 name: TSP cron (run-once)
 
@@ -35,6 +36,11 @@ on:
         description: Log directory for cron tee output (relative to repo root)
         type: string
         default: logs
+      no_log_file:
+        description: |
+          If true, passes --no-log-file to the cron script (no route_solver_cron_*.log; child output to job log only). Skips log artifact upload and does not mkdir log_dir.
+        type: boolean
+        default: false
 
 jobs:
   cron-run-once:
@@ -61,14 +67,22 @@ jobs:
 
       - name: Run cron --run-once
         run: |
-          mkdir -p "${{ github.event.inputs.log_dir }}"
+          NO_LOG="${{ github.event.inputs.no_log_file }}"
+          if [ "$NO_LOG" != "true" ]; then
+            mkdir -p "${{ github.event.inputs.log_dir }}"
+          fi
           MODE="${{ github.event.inputs.cron_mode }}"
           MAP="${{ github.event.inputs.map_path }}"
           CP_RAW="${{ github.event.inputs.challenge_paths }}"
           SUBMIT="${{ github.event.inputs.submit }}"
           LOG_DIR="${{ github.event.inputs.log_dir }}"
 
-          CRON_ARGS=(node ./scripts/run-cron.mjs --run-once --log-dir="$LOG_DIR")
+          CRON_ARGS=(node ./scripts/run-cron.mjs --run-once)
+          if [ "$NO_LOG" = "true" ]; then
+            CRON_ARGS+=(--no-log-file)
+          else
+            CRON_ARGS+=(--log-dir="$LOG_DIR")
+          fi
           if [ "$SUBMIT" = "true" ]; then
             CRON_ARGS+=(--submit)
           fi
@@ -104,7 +118,7 @@ jobs:
           "${CRON_ARGS[@]}"
 
       - name: Upload logs
-        if: always()
+        if: always() && github.event.inputs.no_log_file != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: tsp-cron-run-once-${{ github.run_id }}

@@ -1,4 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import {
   apiCalculateCoaxium,
@@ -45,10 +45,6 @@ function printUsage(): void {
       "  Status:  node dist/cli.js --active-level-daily  (GET GetActiveLevelDailyChallenge, JSON to stdout)\n" +
       "  POST:    add --calculate-coaxium (oracle) or --submit (persist); not both.\n" +
       "\n" +
-      "Cache flags:\n" +
-      "  --no-cache        Disable local GetDailyChallenge cache.\n" +
-      "  --refresh-cache   Force refresh of local GetDailyChallenge cache.\n" +
-      "\n" +
       "Env: STAR_DELIVERY_BASE_URL or VITE_API_BASE_URL, PLAYER_GUID, PLAYER_EMAIL"
   );
 }
@@ -64,8 +60,6 @@ interface ParsedFlags {
   activeLevelDaily: boolean;
   submit: boolean;
   calculateCoaxium: boolean;
-  noCache: boolean;
-  refreshCache: boolean;
   challengePaths: string[];
 }
 
@@ -79,8 +73,6 @@ function parseArgv(argv: string[]): ParsedFlags {
   let activeLevelDaily = false;
   let submit = false;
   let calculateCoaxium = false;
-  let noCache = false;
-  let refreshCache = false;
   const challengePaths: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
@@ -91,8 +83,6 @@ function parseArgv(argv: string[]): ParsedFlags {
     else if (a === "--active-level-daily") activeLevelDaily = true;
     else if (a === "--submit") submit = true;
     else if (a === "--calculate-coaxium") calculateCoaxium = true;
-    else if (a === "--no-cache") noCache = true;
-    else if (a === "--refresh-cache") refreshCache = true;
     else if (a === "--base-url" && argv[i + 1]) baseUrl = argv[++i]!;
     else if (a.startsWith("--base-url=")) baseUrl = a.slice("--base-url=".length);
     else if (a === "--player-guid" && argv[i + 1]) playerGuid = argv[++i]!;
@@ -117,8 +107,6 @@ function parseArgv(argv: string[]): ParsedFlags {
     activeLevelDaily,
     submit,
     calculateCoaxium,
-    noCache,
-    refreshCache,
     challengePaths,
   };
 }
@@ -145,64 +133,6 @@ async function loadMapFromLocal(mapPath: string): Promise<ReturnType<typeof mapB
 
 function formatElapsedSeconds(startMs: number, endMs: number): string {
   return ((endMs - startMs) / 1000).toFixed(3);
-}
-
-function sanitizeCachePart(s: string): string {
-  return s.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 140);
-}
-
-function dailyChallengeCachePath(baseUrl: string, headers: ApiHeaders): string {
-  const today = new Date().toISOString().slice(0, 10);
-
-  let basePart = "default-base";
-  try {
-    const u = new URL(baseUrl);
-    basePart = `${u.host}${u.pathname}`;
-  } catch {
-    basePart = baseUrl;
-  }
-
-  const safeBase = sanitizeCachePart(basePart);
-  const safeGuid = sanitizeCachePart(headers.PlayerGuid);
-
-  return join(process.cwd(), ".cache", `GetDailyChallenge-${today}-${safeBase}-${safeGuid}.json`);
-}
-
-async function fetchDailyChallengeListMaybeCached(
-  baseUrl: string,
-  headers: ApiHeaders,
-  opts: { noCache: boolean; refreshCache: boolean }
-): Promise<unknown[]> {
-  if (opts.noCache) {
-    return fetchGetDailyChallengeList(baseUrl, headers);
-  }
-
-  const cachePath = dailyChallengeCachePath(baseUrl, headers);
-
-  if (!opts.refreshCache) {
-    try {
-      const text = await readFile(cachePath, "utf8");
-      const parsed = JSON.parse(text) as unknown;
-
-      if (Array.isArray(parsed)) {
-        console.log(`  [cache] GetDailyChallenge hit ${cachePath}`);
-        return parsed;
-      }
-
-      console.log(`  [cache] GetDailyChallenge ignored invalid cache shape ${cachePath}`);
-    } catch {
-      // Cache miss.
-    }
-  }
-
-  const list = await fetchGetDailyChallengeList(baseUrl, headers);
-
-  await mkdir(join(process.cwd(), ".cache"), { recursive: true });
-  await writeFile(cachePath, JSON.stringify(list, null, 2), "utf8");
-
-  console.log(`  [cache] GetDailyChallenge saved ${cachePath}`);
-
-  return list;
 }
 
 async function runBatch(args: {
@@ -337,11 +267,6 @@ async function main(): Promise<number> {
     return 1;
   }
 
-  if (f.noCache && f.refreshCache) {
-    console.error("Use only one of --no-cache or --refresh-cache.");
-    return 1;
-  }
-
   if (f.activeLevelDaily) {
     const apiConn = apiConnection({
       baseUrl: f.baseUrl,
@@ -401,10 +326,7 @@ async function main(): Promise<number> {
 
     const [localMap, list] = await Promise.all([
       loadMapFromLocal(f.mapPath),
-      fetchDailyChallengeListMaybeCached(apiConn.baseUrl, apiConn.headers, {
-        noCache: f.noCache,
-        refreshCache: f.refreshCache,
-      }),
+      fetchGetDailyChallengeList(apiConn.baseUrl, apiConn.headers),
     ]);
 
     planetsAndRoutes = localMap;
@@ -420,10 +342,7 @@ async function main(): Promise<number> {
 
     const [mapRoot, list] = await Promise.all([
       fetchGetPlanetsAndRoutesRoot(apiConn.baseUrl, apiConn.headers),
-      fetchDailyChallengeListMaybeCached(apiConn.baseUrl, apiConn.headers, {
-        noCache: f.noCache,
-        refreshCache: f.refreshCache,
-      }),
+      fetchGetDailyChallengeList(apiConn.baseUrl, apiConn.headers),
     ]);
 
     planetsAndRoutes = mapBlobToPlanetsRoutes(mapRoot);
@@ -461,12 +380,11 @@ async function main(): Promise<number> {
   }
 
   if (f.dailyApi) {
-    const list =
-      dailyChallengeList ??
-      (await fetchDailyChallengeListMaybeCached(apiConn!.baseUrl, apiConn!.headers, {
-        noCache: f.noCache,
-        refreshCache: f.refreshCache,
-      }));
+    if (dailyChallengeList == null) {
+      console.error("Internal error: daily challenge list not loaded.");
+      return 1;
+    }
+    const list = dailyChallengeList;
 
     const entries: Record<string, unknown>[] = [];
 

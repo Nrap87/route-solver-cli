@@ -10,6 +10,7 @@
  *
  * Every-minute + wall-clock window (supports overnight), etc.:
  *   npm run tsp-cron -- --every-minute --window-start=00:59 --window-end=01:10 --log-dir=C:/tsp_logs
+ *   Add `--no-log-file` (or `TSP_SCHED_NO_LOG_FILE=1`) to skip per-run log files; child stdout/stderr only.
  *
  * Credentials: PLAYER_GUID, PLAYER_EMAIL (optional STAR_DELIVERY_BASE_URL / VITE_API_BASE_URL) — inherited by the child,
  * or pass --player-guid / --player-email on this script (same forms as argvLongFlag: --name=value or --name value); they are merged into the child process env.
@@ -18,12 +19,14 @@
  *      TSP_SCHED_LOG_DIR
  *      TSP_SCHED_SUBMIT=1 → forward --submit
  *      TSP_SCHED_CALCULATE_COAXIUM=1 → forward --calculate-coaxium
+ *      TSP_SCHED_NO_LOG_FILE=1 → do not create per-run log files under log-dir (stdout/stderr only)
  *
  * Windows: avoid unquoted `--log-dir=C:\tsp_logs` — `\t` can become a tab. Use
  * `--log-dir=C:/tsp_logs`, `--log-dir 'C:\\tsp_logs'`, or set `TSP_SCHED_LOG_DIR`.
+ * Prefer `--log-dir` over a bare positional when using `--map file.json` — otherwise `file.json` can be mistaken for the log-dir path.
  */
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, createWriteStream } from "node:fs";
+import { existsSync, mkdirSync, createWriteStream, statSync } from "node:fs";
 import type { WriteStream } from "node:fs";
 import { join, dirname, resolve, isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -304,18 +307,22 @@ function childEnvWithCredentials(extra: { playerGuid?: string; playerEmail?: str
 }
 
 /**
- * One run: `node dist/cli.js` (+ submit / calculate-coaxium), stdout/stderr tee to log file.
+ * One run: `node dist/cli.js` (+ submit / calculate-coaxium). If `logDir` is set, stdout/stderr are also tee'd to a file there.
  */
 async function runDailySolve(
-  logDir: string,
+  logDir: string | null,
   cliPath: string,
   child: ChildFlags,
   credentials: { playerGuid?: string; playerEmail?: string },
   childCliArgv: string[]
 ): Promise<number> {
-  mkdirSync(logDir, { recursive: true });
-  const logPath = join(logDir, `route_solver_cron_${logFileStamp()}.log`);
-  const logStream: WriteStream = createWriteStream(logPath, { flags: "w", encoding: "utf8" });
+  let logPath: string | null = null;
+  let logStream: WriteStream | null = null;
+  if (logDir) {
+    mkdirSync(logDir, { recursive: true });
+    logPath = join(logDir, `route_solver_cron_${logFileStamp()}.log`);
+    logStream = createWriteStream(logPath, { flags: "w", encoding: "utf8" });
+  }
 
   const args = buildCliArgs(cliPath, childCliArgv, child);
   const childEnv = childEnvWithCredentials(credentials);
@@ -323,9 +330,13 @@ async function runDailySolve(
     `start ${new Date().toISOString()}\n` +
     `cwd: ${PKG_ROOT}\n` +
     `cmd: ${process.execPath} ${args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ")}\n\n`;
-  logStream.write(header);
+  logStream?.write(header);
 
-  console.log(`[${new Date().toISOString()}] starting child cli -> ${logPath}`);
+  console.log(
+    logPath
+      ? `[${new Date().toISOString()}] starting child cli -> ${logPath}`
+      : `[${new Date().toISOString()}] starting child cli (--no-log-file: stdout/stderr only)`
+  );
 
   return new Promise<number>((resolvePromise, rejectPromise) => {
     const proc = spawn(process.execPath, args, {
@@ -336,23 +347,27 @@ async function runDailySolve(
 
     const pipe = (chunk: Buffer, out: NodeJS.WriteStream) => {
       out.write(chunk);
-      logStream.write(chunk);
+      logStream?.write(chunk);
     };
 
     proc.stdout?.on("data", (c: Buffer) => pipe(c, process.stdout));
     proc.stderr?.on("data", (c: Buffer) => pipe(c, process.stderr));
 
     proc.on("error", (err) => {
-      logStream.write(`\nspawn error: ${err}\n`);
-      logStream.end();
+      logStream?.write(`\nspawn error: ${err}\n`);
+      logStream?.end();
       rejectPromise(err);
     });
 
     proc.on("close", (code, signal) => {
       const exit = code ?? (signal ? 1 : 0);
-      logStream.write(`\nend ${new Date().toISOString()} exit=${exit}\n`);
-      logStream.end();
-      console.log(`[${new Date().toISOString()}] finished exit=${exit} log=${logPath}`);
+      logStream?.write(`\nend ${new Date().toISOString()} exit=${exit}\n`);
+      logStream?.end();
+      console.log(
+        logPath
+          ? `[${new Date().toISOString()}] finished exit=${exit} log=${logPath}`
+          : `[${new Date().toISOString()}] finished exit=${exit} (--no-log-file)`
+      );
       resolvePromise(exit);
     });
   });
@@ -385,6 +400,7 @@ async function main(): Promise<number> {
       "no-submit": { type: "boolean", default: false },
       "calculate-coaxium": { type: "boolean", default: false },
       "no-calculate-coaxium": { type: "boolean", default: false },
+      "no-log-file": { type: "boolean", default: false },
     },
   });
 
@@ -428,7 +444,18 @@ async function main(): Promise<number> {
   const noExitAfter = Boolean(values["no-exit-after-window"]);
 
   const logDirFlag = (argvLongFlag("log-dir") ?? String(values["log-dir"] ?? "").trim()).trim();
-  const logDirPos = positionals[0]?.trim() ?? "";
+  let logDirPos = positionals[0]?.trim() ?? "";
+  const mapCron = argvLongFlag("map")?.trim() ?? "";
+  if (mapCron && logDirPos && resolveCronPath(logDirPos) === resolveCronPath(mapCron)) {
+    logDirPos = "";
+  }
+  const challengeCronPaths = argvAllValuesForOption("challenge").map((c) => resolveCronPath(c.trim()));
+  if (
+    logDirPos &&
+    challengeCronPaths.some((p) => p.length > 0 && resolveCronPath(logDirPos) === p)
+  ) {
+    logDirPos = "";
+  }
   const logDirRaw =
     logDirFlag ||
     logDirPos ||
@@ -437,9 +464,32 @@ async function main(): Promise<number> {
   if (positionals.length > 1) {
     console.error("Warning: extra positional arguments ignored (only first is used as log-dir if --log-dir is omitted).");
   }
-  const logDir = isAbsolute(logDirRaw) ? resolve(logDirRaw) : resolve(PKG_ROOT, logDirRaw);
+  const defaultLogs = join(PKG_ROOT, "logs");
+  let logDir = isAbsolute(logDirRaw) ? resolve(logDirRaw) : resolve(PKG_ROOT, logDirRaw);
+  if (existsSync(logDir)) {
+    try {
+      if (statSync(logDir).isFile()) {
+        console.error(
+          `[schedule] log path ${logDir} is a file, not a directory. ` +
+            `Often a map/challenge JSON path was parsed as the log-dir positional. ` +
+            `Use --log-dir=<directory> or set TSP_SCHED_LOG_DIR. Using default: ${defaultLogs}`
+        );
+        logDir = defaultLogs;
+      }
+    } catch {
+      /* ignore stat errors */
+    }
+  }
 
-  console.log(`[schedule] resolved log directory: ${logDir}`);
+  const noLogFile =
+    argvCronHasFlag("no-log-file") || Boolean(values["no-log-file"]) || envTruthy("TSP_SCHED_NO_LOG_FILE");
+  const logDirForRuns: string | null = noLogFile ? null : logDir;
+
+  if (noLogFile) {
+    console.log("[schedule] per-run log files: disabled (--no-log-file); child output → stdout/stderr only");
+  } else {
+    console.log(`[schedule] resolved log directory: ${logDir}`);
+  }
 
   const cliPath = resolve(String(values["cli-path"] ?? "").trim() || DEFAULT_CLI);
 
@@ -462,7 +512,7 @@ async function main(): Promise<number> {
   }
 
   if (values["run-once"]) {
-    return await runDailySolve(logDir, cliPath, childFlags, credentials, childCliArgv);
+    return await runDailySolve(logDirForRuns, cliPath, childFlags, credentials, childCliArgv);
   }
 
   if (everyMinute) {
@@ -497,9 +547,10 @@ async function main(): Promise<number> {
     const autoNote = values["every-minute"]
       ? ""
       : " (window mode inferred: both window start and end are set).";
+    const logNote = noLogFile ? "no per-run log files (--no-log-file)" : `logs -> ${logDir}`;
     console.log(
       `route-solver-cli cron: every minute at :00, only between ${windowStart} and ${windowEnd} inclusive ` +
-        `(${span}, local). Logs -> ${logDir}.${extra}${autoNote}`
+        `(${span}, local). ${logNote}.${extra}${autoNote}`
     );
 
     installSignalHandlers();
@@ -512,7 +563,7 @@ async function main(): Promise<number> {
         entered = true;
         running = true;
         try {
-          await runDailySolve(logDir, cliPath, childFlags, credentials, childCliArgv);
+          await runDailySolve(logDirForRuns, cliPath, childFlags, credentials, childCliArgv);
         } finally {
           running = false;
         }
@@ -539,9 +590,10 @@ async function main(): Promise<number> {
   }
 
   let lastRunDay = "";
+  const logNoteDaily = noLogFile ? "no per-run log files (--no-log-file)" : `logs -> ${logDir}`;
   console.log(
     `route-solver-cli cron: daily at ${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")} (local). ` +
-      `Logs -> ${logDir}. Ctrl+C to stop.`
+      `${logNoteDaily}. Ctrl+C to stop.`
   );
 
   installSignalHandlers();
@@ -553,7 +605,7 @@ async function main(): Promise<number> {
     const dayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
     if (dayKey === lastRunDay) continue;
     lastRunDay = dayKey;
-    await runDailySolve(logDir, cliPath, childFlags, credentials, childCliArgv);
+    await runDailySolve(logDirForRuns, cliPath, childFlags, credentials, childCliArgv);
   }
 }
 

@@ -5,6 +5,7 @@
 #   STAR_DELIVERY_BASE_URL, PLAYER_GUID, PLAYER_EMAIL
 #
 # Child env: `tsp_cron_service` does not parse --base-url; the child reads STAR_DELIVERY_BASE_URL.
+# Cron `--no-log-file` skips per-run route_solver_cron_*.log files (see workflow input no_log_file).
 
 name: TSP cron (daily API window)
 
@@ -51,6 +52,11 @@ on:
         description: Forward --submit to the child CLI
         type: boolean
         default: true
+      no_log_file:
+        description: |
+          If true, passes --no-log-file to the cron script (no route_solver_cron_*.log under log_dir; child output to job log only). Skips log artifact upload.
+        type: boolean
+        default: false
 
 jobs:
   tsp-cron:
@@ -86,10 +92,14 @@ jobs:
           MAP="${{ github.event.inputs.map_path }}"
           CP_RAW="${{ github.event.inputs.challenge_paths }}"
           SUBMIT="${{ github.event.inputs.submit }}"
+          NO_LOG="${{ github.event.inputs.no_log_file }}"
 
           CRON_ARGS=(node ./scripts/run-cron.mjs --every-minute --window-start="${{ github.event.inputs.window_start }}" --window-end="${{ github.event.inputs.window_end }}" --log-dir="$LOG_DIR")
           if [ "$SUBMIT" = "true" ]; then
             CRON_ARGS+=(--submit)
+          fi
+          if [ "$NO_LOG" = "true" ]; then
+            CRON_ARGS+=(--no-log-file)
           fi
 
           case "$MODE" in
@@ -125,7 +135,7 @@ jobs:
           LOG_DIR_INPUT: ${{ github.event.inputs.log_dir }}
 
       - name: Upload logs
-        if: always()
+        if: always() && github.event.inputs.no_log_file != 'true'
         uses: actions/upload-artifact@v4
         with:
           name: tsp-cron-logs-${{ github.run_id }}
