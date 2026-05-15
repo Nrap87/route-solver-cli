@@ -1,13 +1,10 @@
-# Runs the same schedule as locally: every minute at :00 between window-start and window-end
-# (inclusive), each tick runs `node dist/cli.js --daily-api` (+ optional --submit).
+# Every minute at :00 between window-start and window-end (inclusive), each tick runs the
+# cron child (`scripts/tsp_cron_service.ts` → `dist/cli.js`). See that file for child modes.
 #
-# Required repository secrets (Settings → Secrets and variables → Actions):
-#   STAR_DELIVERY_BASE_URL — e.g. https://wecode.outsystems.com/.../StarDeliveryServices
-#   PLAYER_GUID
-#   PLAYER_EMAIL
+# Required repository secrets:
+#   STAR_DELIVERY_BASE_URL, PLAYER_GUID, PLAYER_EMAIL
 #
-# Note: `tsp_cron_service` does not parse --base-url; the child reads STAR_DELIVERY_BASE_URL
-# (or VITE_API_BASE_URL) from the environment.
+# Child env: `tsp_cron_service` does not parse --base-url; the child reads STAR_DELIVERY_BASE_URL.
 
 name: TSP cron (daily API window)
 
@@ -30,6 +27,30 @@ on:
         description: Log directory (relative to repo root, or absolute)
         type: string
         default: "tsp_logs"
+      cron_mode:
+        description: |
+          Child CLI mode (must match scripts/tsp_cron_service.ts rules).
+          daily-api = default; map-daily / api-map-daily need no challenge_paths; *_challenge modes need comma-separated paths.
+        type: choice
+        options:
+          - daily-api
+          - api-map-daily-api
+          - map-daily-api
+          - api-map-challenge
+          - map-challenge
+        default: daily-api
+      map_path:
+        description: Repo-relative map JSON (for map-daily-api, map-challenge)
+        type: string
+        default: "data.json"
+      challenge_paths:
+        description: Comma-separated repo-relative challenge JSON paths (api-map-challenge, map-challenge)
+        type: string
+        default: ""
+      submit:
+        description: Forward --submit to the child CLI
+        type: boolean
+        default: true
 
 jobs:
   tsp-cron:
@@ -55,17 +76,51 @@ jobs:
           npm ci
           npm run build
 
-      - name: Run cron window (every-minute + submit)
+      - name: Run cron window
         id: cron
         run: |
           LOG_DIR="${LOG_DIR_INPUT}"
           echo "log_dir=${LOG_DIR}" >> "$GITHUB_OUTPUT"
-          node ./scripts/run-cron.mjs \
-            --every-minute \
-            --window-start="${{ github.event.inputs.window_start }}" \
-            --window-end="${{ github.event.inputs.window_end }}" \
-            --log-dir="$LOG_DIR" \
-            --submit
+
+          MODE="${{ github.event.inputs.cron_mode }}"
+          MAP="${{ github.event.inputs.map_path }}"
+          CP_RAW="${{ github.event.inputs.challenge_paths }}"
+          SUBMIT="${{ github.event.inputs.submit }}"
+
+          CRON_ARGS=(node ./scripts/run-cron.mjs --every-minute --window-start="${{ github.event.inputs.window_start }}" --window-end="${{ github.event.inputs.window_end }}" --log-dir="$LOG_DIR")
+          if [ "$SUBMIT" = "true" ]; then
+            CRON_ARGS+=(--submit)
+          fi
+
+          case "$MODE" in
+            daily-api) ;;
+            api-map-daily-api) CRON_ARGS+=(--api-map --daily-api) ;;
+            map-daily-api) CRON_ARGS+=(--map "$MAP" --daily-api) ;;
+            api-map-challenge)
+              CRON_ARGS+=(--api-map)
+              IFS=',' read -r -a CPS <<< "$CP_RAW"
+              for p in "${CPS[@]}"; do
+                p="${p#"${p%%[![:space:]]*}"}"
+                p="${p%"${p##*[![:space:]]}"}"
+                [ -n "$p" ] && CRON_ARGS+=(--challenge "$p")
+              done
+              ;;
+            map-challenge)
+              CRON_ARGS+=(--map "$MAP")
+              IFS=',' read -r -a CPS <<< "$CP_RAW"
+              for p in "${CPS[@]}"; do
+                p="${p#"${p%%[![:space:]]*}"}"
+                p="${p%"${p##*[![:space:]]}"}"
+                [ -n "$p" ] && CRON_ARGS+=(--challenge "$p")
+              done
+              ;;
+            *)
+              echo "Unknown cron_mode: $MODE" >&2
+              exit 1
+              ;;
+          esac
+
+          "${CRON_ARGS[@]}"
         env:
           LOG_DIR_INPUT: ${{ github.event.inputs.log_dir }}
 

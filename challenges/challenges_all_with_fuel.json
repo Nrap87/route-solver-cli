@@ -494,5 +494,81 @@
     "challengeName": "The Myth of Sisyphus: Wild Space",
     "isFinished": true,
     "realFuel": 4721
+  },
+  {
+    "startPlanetId": 44,
+    "mandatoryPlanetIds": [
+      145,
+      154,
+      1,
+      178,
+      80,
+      140
+    ],
+    "forbiddenPlanetIds": [],
+    "bonusStops": [],
+    "challengeId": 109,
+    "challengeName": "Lost Highway: Carpool Lane",
+    "isFinished": true,
+    "realFuel": 4282
+  },
+  {
+    "startPlanetId": 44,
+    "mandatoryPlanetIds": [
+      145,
+      154,
+      1,
+      178,
+      80,
+      140
+    ],
+    "forbiddenPlanetIds": [
+      50,
+      184,
+      174
+    ],
+    "bonusStops": [],
+    "challengeId": 110,
+    "challengeName": "Lost Highway: Toll Lane",
+    "isFinished": true,
+    "realFuel": 4615
+  },
+  {
+    "startPlanetId": 44,
+    "mandatoryPlanetIds": [
+      145,
+      154,
+      1,
+      178,
+      80,
+      140
+    ],
+    "forbiddenPlanetIds": [
+      50,
+      184,
+      174
+    ],
+    "bonusStops": [
+      {
+        "planetId": 102,
+        "value": 200
+      },
+      {
+        "planetId": 117,
+        "value": 50
+      },
+      {
+        "planetId": 175,
+        "value": 200
+      },
+      {
+        "planetId": 181,
+        "value": 200
+      }
+    ],
+    "challengeId": 111,
+    "challengeName": "Lost Highway: Rush Hour",
+    "isFinished": true,
+    "realFuel": 4409
   }
 ]

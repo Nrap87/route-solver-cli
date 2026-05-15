@@ -1,9 +1,15 @@
 #!/usr/bin/env npx tsx
 /**
- * Schedule `node dist/cli.js --daily-api` (Star Delivery map + GetDailyChallenge + optional POST).
+ * Schedule `node dist/cli.js` runs (default: `--daily-api` = API map + GetDailyChallenge + optional POST).
  *
- * Every-minute + wall-clock window (supports overnight):
- *   npm run tsp-cron -- --every-minute --window-start=00:59 --window-end=01:10 --log-dir=C:\tsp_logs
+ * Child mode (omit all of these to keep default `--daily-api` only):
+ *   --map <file> --challenge <file> [...]     local map + local challenge JSON(s)
+ *   --api-map --challenge <file> [...]       API map + local challenge JSON(s)
+ *   --map <file> --daily-api                   local map + GetDailyChallenge from API
+ *   --api-map --daily-api                      API map + GetDailyChallenge (same idea as default+dual flags)
+ *
+ * Every-minute + wall-clock window (supports overnight), etc.:
+ *   npm run tsp-cron -- --every-minute --window-start=00:59 --window-end=01:10 --log-dir=C:/tsp_logs
  *
  * Credentials: PLAYER_GUID, PLAYER_EMAIL (optional STAR_DELIVERY_BASE_URL / VITE_API_BASE_URL) — inherited by the child,
  * or pass --player-guid / --player-email on this script (same forms as argvLongFlag: --name=value or --name value); they are merged into the child process env.
@@ -51,6 +57,98 @@ function argvLongFlag(name: string): string | undefined {
     }
   }
   return undefined;
+}
+
+/** Collect every `--name` / `--name=` / `--name:` value (e.g. repeated `--challenge`). */
+function argvAllValuesForOption(name: string): string[] {
+  const out: string[] = [];
+  const prefixEq = `--${name}=`;
+  const prefixColon = `--${name}:`;
+  const prefixOnly = `--${name}`;
+  for (let i = 0; i < process.argv.length; i++) {
+    const a = process.argv[i]!;
+    if (a.startsWith(prefixEq)) {
+      const v = a.slice(prefixEq.length).trim();
+      if (v.length > 0) out.push(stripArgQuotes(v));
+      else {
+        const next = process.argv[i + 1];
+        if (next != null && !next.startsWith("-")) out.push(stripArgQuotes(next.trim()));
+      }
+      continue;
+    }
+    if (a.startsWith(prefixColon)) {
+      const v = a.slice(prefixColon.length).trim();
+      if (v.length > 0) out.push(stripArgQuotes(v));
+      continue;
+    }
+    if (a === prefixOnly) {
+      const next = process.argv[i + 1];
+      if (next != null && !next.startsWith("-")) out.push(stripArgQuotes(next.trim()));
+    }
+  }
+  return out;
+}
+
+function argvCronHasFlag(name: string): boolean {
+  const eq = `--${name}=`;
+  for (const a of process.argv) {
+    if (a === `--${name}`) return true;
+    if (a.startsWith(eq)) {
+      const v = a.slice(eq.length).trim().toLowerCase();
+      if (v === "false" || v === "0" || v === "no" || v === "off") return false;
+      return true;
+    }
+  }
+  return false;
+}
+
+function resolveCronPath(relOrAbs: string): string {
+  const t = relOrAbs.trim();
+  if (!t) return t;
+  return isAbsolute(t) ? resolve(t) : resolve(PKG_ROOT, t);
+}
+
+/**
+ * Argv forwarded to `dist/cli.js` after the script path (before --submit / --calculate-coaxium).
+ * Default when no child flags given: `["--daily-api"]`.
+ */
+function resolveChildCliArgvPieces(): string[] {
+  const mapArg = argvLongFlag("map")?.trim() ?? "";
+  const hasMap = mapArg.length > 0;
+  const apiMap = argvCronHasFlag("api-map");
+  const dailyApi = argvCronHasFlag("daily-api");
+  const challenges = argvAllValuesForOption("challenge")
+    .map((c) => resolveCronPath(c.trim()))
+    .filter((c) => c.length > 0);
+
+  const specified = hasMap || apiMap || dailyApi || challenges.length > 0;
+
+  if (!specified) {
+    return ["--daily-api"];
+  }
+
+  if (hasMap && apiMap) {
+    throw new Error("Cron: use only one of --map or --api-map for the child CLI.");
+  }
+
+  if (dailyApi && challenges.length > 0) {
+    throw new Error("Cron: do not combine --daily-api with --challenge (same as route-solver-cli).");
+  }
+
+  if (challenges.length > 0 && !hasMap && !apiMap) {
+    throw new Error("Cron: --challenge requires --map or --api-map.");
+  }
+
+  if (!dailyApi && challenges.length === 0) {
+    throw new Error("Cron: need --daily-api and/or at least one --challenge.");
+  }
+
+  const args: string[] = [];
+  if (hasMap) args.push("--map", resolveCronPath(mapArg));
+  if (apiMap) args.push("--api-map");
+  if (dailyApi) args.push("--daily-api");
+  for (const c of challenges) args.push("--challenge", c);
+  return args;
 }
 
 function argvHasEveryMinute(): boolean {
@@ -188,8 +286,8 @@ function logFileStamp(): string {
   return `${d.getFullYear()}${z2(d.getMonth() + 1)}${z2(d.getDate())}_${z2(d.getHours())}${z2(d.getMinutes())}${z2(d.getSeconds())}_${z3(d.getMilliseconds())}`;
 }
 
-function buildCliArgs(cliPath: string, child: ChildFlags): string[] {
-  const args = [cliPath, "--daily-api"];
+function buildCliArgs(cliPath: string, baseArgs: string[], child: ChildFlags): string[] {
+  const args = [cliPath, ...baseArgs];
   if (child.submit) args.push("--submit");
   if (child.calculateCoaxium) args.push("--calculate-coaxium");
   return args;
@@ -206,19 +304,20 @@ function childEnvWithCredentials(extra: { playerGuid?: string; playerEmail?: str
 }
 
 /**
- * One run: `node dist/cli.js --daily-api` (+ submit / calculate-coaxium), stdout/stderr tee to log file.
+ * One run: `node dist/cli.js` (+ submit / calculate-coaxium), stdout/stderr tee to log file.
  */
 async function runDailySolve(
   logDir: string,
   cliPath: string,
   child: ChildFlags,
-  credentials: { playerGuid?: string; playerEmail?: string }
+  credentials: { playerGuid?: string; playerEmail?: string },
+  childCliArgv: string[]
 ): Promise<number> {
   mkdirSync(logDir, { recursive: true });
   const logPath = join(logDir, `route_solver_cron_${logFileStamp()}.log`);
   const logStream: WriteStream = createWriteStream(logPath, { flags: "w", encoding: "utf8" });
 
-  const args = buildCliArgs(cliPath, child);
+  const args = buildCliArgs(cliPath, childCliArgv, child);
   const childEnv = childEnvWithCredentials(credentials);
   const header =
     `start ${new Date().toISOString()}\n` +
@@ -226,7 +325,7 @@ async function runDailySolve(
     `cmd: ${process.execPath} ${args.map((a) => (/\s/.test(a) ? JSON.stringify(a) : a)).join(" ")}\n\n`;
   logStream.write(header);
 
-  console.log(`[${new Date().toISOString()}] starting daily-api -> ${logPath}`);
+  console.log(`[${new Date().toISOString()}] starting child cli -> ${logPath}`);
 
   return new Promise<number>((resolvePromise, rejectPromise) => {
     const proc = spawn(process.execPath, args, {
@@ -349,12 +448,21 @@ async function main(): Promise<number> {
     return 1;
   }
 
+  let childCliArgv: string[];
+  try {
+    childCliArgv = resolveChildCliArgvPieces();
+  } catch (e) {
+    console.error(e instanceof Error ? e.message : String(e));
+    return 2;
+  }
+
   if (process.env.TSP_SCHED_DEBUG?.trim()) {
     console.error("[schedule] argv:", JSON.stringify(process.argv));
+    console.error("[schedule] child cli argv:", JSON.stringify(childCliArgv));
   }
 
   if (values["run-once"]) {
-    return await runDailySolve(logDir, cliPath, childFlags, credentials);
+    return await runDailySolve(logDir, cliPath, childFlags, credentials, childCliArgv);
   }
 
   if (everyMinute) {
@@ -404,7 +512,7 @@ async function main(): Promise<number> {
         entered = true;
         running = true;
         try {
-          await runDailySolve(logDir, cliPath, childFlags, credentials);
+          await runDailySolve(logDir, cliPath, childFlags, credentials, childCliArgv);
         } finally {
           running = false;
         }
@@ -445,7 +553,7 @@ async function main(): Promise<number> {
     const dayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
     if (dayKey === lastRunDay) continue;
     lastRunDay = dayKey;
-    await runDailySolve(logDir, cliPath, childFlags, credentials);
+    await runDailySolve(logDir, cliPath, childFlags, credentials, childCliArgv);
   }
 }
 

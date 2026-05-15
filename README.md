@@ -79,6 +79,16 @@ Fetches **GetPlanetsAndRoutes** and **GetDailyChallenge**, sorts by `ChallengeId
 node dist/cli.js --daily-api --player-guid "<guid>" --player-email "<email>"
 ```
 
+### Local map + daily challenges from the API
+
+Loads planets/routes from a **local** file (same shape as **GetPlanetsAndRoutes**), but still uses the API for **GetDailyChallenge** (and for **POST** when enabled):
+
+```bash
+node dist/cli.js --map path/to/data.json --daily-api --player-guid "<guid>" --player-email "<email>"
+```
+
+You cannot combine **`--map`** and **`--api-map`** on the same run.
+
 Optional **POST** (exactly one per run):
 
 - `--calculate-coaxium` — calls **CalculateCoaxium** with the solved route (oracle / dry run).
@@ -160,7 +170,67 @@ If you use a **Web Service** instead of a static site, set the build command the
 | `npm run web:build` | Production build of `web/` |
 | `npm run render:build` | Root + `web/` install, then `web:build` (for Render / CI) |
 | `npm run web:preview` | Preview production build |
-| `npm run tsp-cron` | Cron helper (`scripts/run-cron.mjs`) |
+| `npm run tsp-cron` | Cron helper (`scripts/run-cron.mjs` → `scripts/tsp_cron_service.ts`). Schedules `dist/cli.js`; see **GitHub Actions** and the script header for child modes (`--daily-api`, `--map` / `--api-map` with `--challenge` or `--daily-api`). |
+
+## GitHub Actions
+
+Workflows live under **`.github/workflows/`**. Configure repository **Actions secrets** (Settings → Secrets and variables → Actions):
+
+| Secret | Purpose |
+|--------|---------|
+| `STAR_DELIVERY_BASE_URL` | REST root (same as env / `--base-url` for the CLI) |
+| `PLAYER_GUID` | Player header |
+| `PLAYER_EMAIL` | Player header |
+
+The cron launcher does **not** forward `--base-url`; it relies on **`STAR_DELIVERY_BASE_URL`** in the job environment so the child inherits it.
+
+### Child mode (`cron_mode`)
+
+Both workflows below offer the same **`cron_mode`** choices. They are passed through to `scripts/tsp_cron_service.ts`, which builds the **`dist/cli.js`** argument list (rules match the CLI: e.g. no **`--challenge`** with **`--daily-api`**).
+
+| `cron_mode` | Effect (child process) |
+|-------------|-------------------------|
+| **`daily-api`** | `--daily-api` only (API map + GetDailyChallenge; default for the window workflow). |
+| **`api-map-daily-api`** | `--api-map --daily-api`. |
+| **`map-daily-api`** | `--map <map_path> --daily-api` (local map + GetDailyChallenge). |
+| **`api-map-challenge`** | `--api-map` plus one or more **`--challenge`** paths from **`challenge_paths`**. |
+| **`map-challenge`** | `--map <map_path>` plus **`--challenge`** paths from **`challenge_paths`**. |
+
+Supporting **`workflow_dispatch` inputs**:
+
+| Input | Notes |
+|-------|--------|
+| **`map_path`** | Repo-relative path to map JSON (for **`map-*`** modes). Default `data.json` where applicable. |
+| **`challenge_paths`** | Comma-separated repo-relative paths (for **`*-challenge`** modes). Example: `challenges/a.json,challenges/b.json`. |
+| **`submit`** | When true (default), **`--submit`** is appended for the child. |
+
+### `.github/workflows/tsp-cron-window.yml`
+
+**Name:** *TSP cron (daily API window)* — manual runs only.
+
+Runs **`node ./scripts/run-cron.mjs`** with **`--every-minute`**, **`--window-start`**, **`--window-end`**, **`--log-dir`**, plus **`cron_mode`** / **`map_path`** / **`challenge_paths`** / **`submit`** as above. **`timezone`** sets the job’s **`TZ`** so the window is interpreted in that zone.
+
+| Dispatch input | Typical use |
+|----------------|-------------|
+| **`window_start`**, **`window_end`** | `HH:MM` wall times in **`timezone`**. |
+| **`timezone`** | IANA zone (e.g. `UTC`, `Europe/London`). |
+| **`log_dir`** | Directory for cron log files (repo-relative or absolute). |
+| **`cron_mode`**, **`map_path`**, **`challenge_paths`**, **`submit`** | Child CLI mode; see tables above. |
+
+Artifacts: uploaded **`log_dir`** (cron log files such as `route_solver_cron_*.log`).
+
+### `.github/workflows/tsp-api-map-challenge.yml`
+
+**Name:** *TSP cron (run-once)* — manual runs only.
+
+Same **`cron_mode`** / **`map_path`** / **`challenge_paths`** / **`submit`** semantics, but runs a **single** tick: **`node ./scripts/run-cron.mjs --run-once --log-dir`**. Default **`cron_mode`** is **`api-map-challenge`** with **`challenge_paths`** default **`challenges/challenges_all_with_fuel.json`** so one-click runs match the previous “API map + bundled challenge file” behavior.
+
+| Dispatch input | Typical use |
+|----------------|-------------|
+| **`log_dir`** | Where **`--run-once`** writes **`route_solver_cron_*.log`** (default **`logs`**). |
+| **`cron_mode`**, **`map_path`**, **`challenge_paths`**, **`submit`** | Same as the window workflow. |
+
+Artifacts: upload the configured **`log_dir`** (default **`logs/`**).
 
 ## Repository layout
 

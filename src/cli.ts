@@ -39,7 +39,8 @@ function printUsage(): void {
     "Usage:\n" +
       "  Local:   node dist/cli.js --map data.json --challenge mission.json [...]\n" +
       "  API map: node dist/cli.js --api-map --challenge mission.json\n" +
-      "  API all: node dist/cli.js --daily-api\n" +
+      "  API all: node dist/cli.js --daily-api  (API map + GetDailyChallenge)\n" +
+      "  Hybrid:  node dist/cli.js --map data.json --daily-api  (local map + GetDailyChallenge)\n" +
       "  Status:  node dist/cli.js --active-level-daily  (GET GetActiveLevelDailyChallenge, JSON to stdout)\n" +
       "  POST:    add --calculate-coaxium (oracle) or --submit (persist); not both.\n" +
       "Env: STAR_DELIVERY_BASE_URL or VITE_API_BASE_URL, PLAYER_GUID, PLAYER_EMAIL"
@@ -124,6 +125,10 @@ async function loadMapFromLocal(mapPath: string): Promise<ReturnType<typeof mapB
   return mapBlobToPlanetsRoutes(root);
 }
 
+function formatElapsedSeconds(startMs: number, endMs: number): string {
+  return ((endMs - startMs) / 1000).toFixed(3);
+}
+
 async function runBatch(args: {
   challenges: ChallengeFields[];
   planetsAndRoutes: ReturnType<typeof mapBlobToPlanetsRoutes>;
@@ -136,11 +141,6 @@ async function runBatch(args: {
   const sorted = [...challenges].sort((a, b) => (a.challengeId ?? 0) - (b.challengeId ?? 0));
   const planetsById = new Map(planetsAndRoutes.planets.map((p) => [p.id, p]));
 
-  console.log("Fetching challenges and map data...");
-  const pendingLabels = sorted.map((ch) => ch.title ?? `Challenge #${ch.challengeId ?? "?"}`);
-  console.log(`Pending: ${pendingLabels.join(", ")}`);
-  console.log("");
-
   let rank = 0;
   for (const ch of sorted) {
     rank += 1;
@@ -150,15 +150,25 @@ async function runBatch(args: {
     const idPart = cid !== undefined ? String(cid) : String(rank);
     const titleBit = title ? ` ${JSON.stringify(title)}` : "";
 
+    const challengeStartMs = Date.now();
+    console.log(`  [challenge] start ${new Date(challengeStartMs).toISOString()}`);
+    const logChallengeComplete = () => {
+      const endMs = Date.now();
+      console.log(`  [challenge] end ${new Date(endMs).toISOString()}`);
+      console.log(`  [challenge] elapsed ${formatElapsedSeconds(challengeStartMs, endMs)}s`);
+    };
+
     console.log(`Solving [#${idPart} Level ${level}]${titleBit}...`);
 
     const input = challengeToSolveInput(planetsAndRoutes.planets, planetsAndRoutes.routes, ch);
+
     const t0 = performance.now();
     const result = solve(input);
     const ms = performance.now() - t0;
 
     if (!result.success) {
       console.log(`  → ERROR: ${result.errorMessage ?? "unknown"} (${ms.toFixed(0)}ms)`);
+      logChallengeComplete();
       console.log("");
       continue;
     }
@@ -174,6 +184,7 @@ async function runBatch(args: {
       if (!api) throw new Error("Internal error: POST requested without API connection.");
       if (cid === undefined) {
         console.log("  → skipped API: challenge has no ChallengeId in payload.");
+        logChallengeComplete();
         console.log("");
         continue;
       }
@@ -191,6 +202,7 @@ async function runBatch(args: {
         console.log(`  → API error: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
+    logChallengeComplete();
     console.log("");
   }
 
@@ -201,27 +213,27 @@ async function runBatch(args: {
   }
 }
 
-async function main(): Promise<void> {
+async function main(): Promise<number> {
   const f = parseArgv(process.argv.slice(2));
 
   if (f.submit && f.calculateCoaxium) {
     console.error("Use only one of --submit or --calculate-coaxium.");
-    process.exit(1);
+    return 1;
   }
 
   if (f.activeLevelDaily && (f.submit || f.calculateCoaxium)) {
     console.error("--active-level-daily cannot be combined with --submit or --calculate-coaxium.");
-    process.exit(1);
+    return 1;
   }
 
   if (f.activeLevelDaily && f.challengePaths.length > 0) {
     console.error("Do not pass --challenge with --active-level-daily.");
-    process.exit(1);
+    return 1;
   }
 
   if (f.activeLevelDaily && f.dailyApi) {
     console.error("Use only one of --daily-api or --active-level-daily.");
-    process.exit(1);
+    return 1;
   }
 
   if (f.activeLevelDaily) {
@@ -232,23 +244,35 @@ async function main(): Promise<void> {
     });
     const raw = await fetchGetActiveLevelDailyChallenge(apiConn.baseUrl, apiConn.headers);
     console.log(JSON.stringify(raw, null, 2));
-    return;
+    return 0;
   }
 
   if (f.dailyApi && f.challengePaths.length > 0) {
     console.error("Do not pass --challenge with --daily-api.");
-    process.exit(1);
+    return 1;
+  }
+
+  if (f.mapPath && f.useApiMap) {
+    console.error("Use only one of --map or --api-map.");
+    return 1;
   }
 
   if ((f.submit || f.calculateCoaxium) && f.dailyApi === false && f.useApiMap === false && f.challengePaths.length === 0) {
     console.error("--submit / --calculate-coaxium require --daily-api, or --map/--api-map with --challenge.");
-    process.exit(1);
+    return 1;
   }
 
   let planetsAndRoutes: ReturnType<typeof mapBlobToPlanetsRoutes>;
   let apiConn: { baseUrl: string; headers: ApiHeaders } | null = null;
 
-  if (f.useApiMap || f.dailyApi) {
+  if (f.dailyApi && f.mapPath) {
+    apiConn = apiConnection({
+      baseUrl: f.baseUrl,
+      playerGuid: f.playerGuid,
+      playerEmail: f.playerEmail,
+    });
+    planetsAndRoutes = await loadMapFromLocal(f.mapPath);
+  } else if (f.useApiMap || f.dailyApi) {
     apiConn = apiConnection({
       baseUrl: f.baseUrl,
       playerGuid: f.playerGuid,
@@ -259,7 +283,7 @@ async function main(): Promise<void> {
   } else {
     if (!f.mapPath) {
       printUsage();
-      process.exit(1);
+      return 1;
     }
     planetsAndRoutes = await loadMapFromLocal(f.mapPath);
   }
@@ -283,7 +307,7 @@ async function main(): Promise<void> {
     const challenges = sortChallengeRows(entries);
     if (challenges.length === 0) {
       console.error("GetDailyChallenge returned no challenge rows.");
-      process.exit(1);
+      return 1;
     }
     await runBatch({
       challenges,
@@ -297,7 +321,7 @@ async function main(): Promise<void> {
 
   if (f.challengePaths.length === 0 && !f.dailyApi) {
     console.error("Provide at least one --challenge file (or use --daily-api).");
-    process.exit(1);
+    return 1;
   }
 
   for (let fi = 0; fi < f.challengePaths.length; fi++) {
@@ -317,9 +341,24 @@ async function main(): Promise<void> {
       printFooter: postFlags && isLastFile,
     });
   }
+
+  return 0;
 }
 
-main().catch((e) => {
-  console.error(e);
-  process.exit(1);
-});
+const cliRunStartMs = Date.now();
+console.log(`[cli] start ${new Date(cliRunStartMs).toISOString()}`);
+
+main()
+  .then((code) => {
+    const endMs = Date.now();
+    console.log(`[cli] end ${new Date(endMs).toISOString()}`);
+    console.log(`[cli] elapsed ${formatElapsedSeconds(cliRunStartMs, endMs)}s`);
+    process.exit(code);
+  })
+  .catch((e) => {
+    console.error(e);
+    const endMs = Date.now();
+    console.log(`[cli] end ${new Date(endMs).toISOString()}`);
+    console.log(`[cli] elapsed ${formatElapsedSeconds(cliRunStartMs, endMs)}s`);
+    process.exit(1);
+  });

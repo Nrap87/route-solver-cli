@@ -1,21 +1,43 @@
-# Manual run: API map from Star Delivery + local challenge JSON + submit each solved challenge
-# (same as `node dist/cli.js ... --api-map --challenge <file> --submit`).
+# Single run via the same entrypoint as local cron: `scripts/run-cron.mjs --run-once …`
+# (see `scripts/tsp_cron_service.ts` for allowed flag combinations).
 #
-# Uses the same secrets as `tsp-cron-window.yml`:
-#   STAR_DELIVERY_BASE_URL, PLAYER_GUID, PLAYER_EMAIL
+# Required secrets: STAR_DELIVERY_BASE_URL, PLAYER_GUID, PLAYER_EMAIL
 
-name: TSP API map + challenge file
+name: TSP cron (run-once)
 
 on:
   workflow_dispatch:
     inputs:
-      challenge_path:
-        description: Challenge JSON path relative to repo root
+      cron_mode:
+        description: |
+          Child CLI mode. For *_challenge modes set challenge_paths (comma-separated).
+        type: choice
+        options:
+          - daily-api
+          - api-map-daily-api
+          - map-daily-api
+          - api-map-challenge
+          - map-challenge
+        default: api-map-challenge
+      map_path:
+        description: Repo-relative map JSON (map-daily-api, map-challenge)
+        type: string
+        default: "data.json"
+      challenge_paths:
+        description: Comma-separated repo-relative challenge JSON paths (required for *_challenge modes)
         type: string
         default: challenges/challenges_all_with_fuel.json
+      submit:
+        description: Forward --submit to the child CLI
+        type: boolean
+        default: true
+      log_dir:
+        description: Log directory for cron tee output (relative to repo root)
+        type: string
+        default: logs
 
 jobs:
-  api-map-challenge:
+  cron-run-once:
     runs-on: ubuntu-latest
     timeout-minutes: 60
 
@@ -23,7 +45,6 @@ jobs:
       STAR_DELIVERY_BASE_URL: ${{ secrets.STAR_DELIVERY_BASE_URL }}
       PLAYER_GUID: ${{ secrets.PLAYER_GUID }}
       PLAYER_EMAIL: ${{ secrets.PLAYER_EMAIL }}
-      CHALLENGE_PATH: ${{ github.event.inputs.challenge_path }}
 
     steps:
       - uses: actions/checkout@v4
@@ -38,22 +59,54 @@ jobs:
           npm ci
           npm run build
 
-      - name: Run CLI (api-map + challenge)
+      - name: Run cron --run-once
         run: |
-          mkdir -p logs
-          set -o pipefail
-          node dist/cli.js \
-            --base-url="${STAR_DELIVERY_BASE_URL}" \
-            --player-guid="${PLAYER_GUID}" \
-            --player-email="${PLAYER_EMAIL}" \
-            --api-map \
-            --challenge "${CHALLENGE_PATH}" \
-            --submit 2>&1 | tee logs/api-map-challenge.log
+          mkdir -p "${{ github.event.inputs.log_dir }}"
+          MODE="${{ github.event.inputs.cron_mode }}"
+          MAP="${{ github.event.inputs.map_path }}"
+          CP_RAW="${{ github.event.inputs.challenge_paths }}"
+          SUBMIT="${{ github.event.inputs.submit }}"
+          LOG_DIR="${{ github.event.inputs.log_dir }}"
 
-      - name: Upload run log
+          CRON_ARGS=(node ./scripts/run-cron.mjs --run-once --log-dir="$LOG_DIR")
+          if [ "$SUBMIT" = "true" ]; then
+            CRON_ARGS+=(--submit)
+          fi
+
+          case "$MODE" in
+            daily-api) ;;
+            api-map-daily-api) CRON_ARGS+=(--api-map --daily-api) ;;
+            map-daily-api) CRON_ARGS+=(--map "$MAP" --daily-api) ;;
+            api-map-challenge)
+              CRON_ARGS+=(--api-map)
+              IFS=',' read -r -a CPS <<< "$CP_RAW"
+              for p in "${CPS[@]}"; do
+                p="${p#"${p%%[![:space:]]*}"}"
+                p="${p%"${p##*[![:space:]]}"}"
+                [ -n "$p" ] && CRON_ARGS+=(--challenge "$p")
+              done
+              ;;
+            map-challenge)
+              CRON_ARGS+=(--map "$MAP")
+              IFS=',' read -r -a CPS <<< "$CP_RAW"
+              for p in "${CPS[@]}"; do
+                p="${p#"${p%%[![:space:]]*}"}"
+                p="${p%"${p##*[![:space:]]}"}"
+                [ -n "$p" ] && CRON_ARGS+=(--challenge "$p")
+              done
+              ;;
+            *)
+              echo "Unknown cron_mode: $MODE" >&2
+              exit 1
+              ;;
+          esac
+
+          "${CRON_ARGS[@]}"
+
+      - name: Upload logs
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: tsp-api-map-challenge-${{ github.run_id }}
-          path: logs/api-map-challenge.log
+          name: tsp-cron-run-once-${{ github.run_id }}
+          path: ${{ github.event.inputs.log_dir }}
           if-no-files-found: warn
