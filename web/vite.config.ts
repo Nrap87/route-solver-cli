@@ -31,6 +31,8 @@ export default defineConfig(({ mode }) => {
     resolve: {
       alias: {
         "@cli": path.resolve(__dirname, "../src"),
+        /** `@cli/api` uses `import("undici")` only on Node; never pull Node HTTP into the client. */
+        undici: path.resolve(__dirname, "src/undici-stub.ts"),
       },
     },
     server: {

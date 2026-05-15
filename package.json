@@ -16,6 +16,9 @@
     "test": "vitest run",
     "test:watch": "vitest"
   },
+  "dependencies": {
+    "undici": "^6.21.2"
+  },
   "engines": {
     "node": ">=18.19.0"
   },

@@ -1,3 +1,4 @@
+import type { Dispatcher } from "undici";
 import { pick } from "./adapt.js";
 import type { Planet } from "./solver/types.js";
 
@@ -61,6 +62,44 @@ export function apiConnection(opts: { baseUrl: string; playerGuid: string; playe
   };
 }
 
+let pooledStarDeliveryDispatcher: Dispatcher | undefined;
+let pooledStarDeliveryDispatcherReady: Promise<Dispatcher | undefined> | null = null;
+
+function runningOnNode(): boolean {
+  return typeof globalThis.process !== "undefined" && globalThis.process.versions?.node != null;
+}
+
+/**
+ * Node (CLI): reuse keep-alive connections to the Star Delivery host so sequential calls
+ * avoid repeated TCP + TLS handshakes. HTTPS and certificate validation are unchanged.
+ * Browser builds never load a dispatcher (native fetch).
+ */
+async function starDeliveryFetchDispatcher(): Promise<Dispatcher | undefined> {
+  if (!runningOnNode()) return undefined;
+  if (pooledStarDeliveryDispatcher) return pooledStarDeliveryDispatcher;
+  if (!pooledStarDeliveryDispatcherReady) {
+    pooledStarDeliveryDispatcherReady = import("undici").then(({ Agent }) => {
+      const agent = new Agent({
+        connections: 16,
+        keepAliveTimeout: 60_000,
+        keepAliveMaxTimeout: 600_000,
+      });
+      pooledStarDeliveryDispatcher = agent;
+      return agent;
+    });
+  }
+  return pooledStarDeliveryDispatcherReady;
+}
+
+async function withApiTiming<T>(operation: string, fn: () => Promise<T>): Promise<T> {
+  const t0 = performance.now();
+  try {
+    return await fn();
+  } finally {
+    console.log(`  [api] ${operation} ${(performance.now() - t0).toFixed(0)}ms`);
+  }
+}
+
 function pickBool(o: Record<string, unknown>, ...keys: string[]): boolean {
   const v = pick(o, ...keys);
   if (v === true) return true;
@@ -94,11 +133,14 @@ function normalizeSubmissionResult(raw: unknown): SubmissionResult {
 
 export async function fetchJsonGet(baseUrl: string, path: string, headers: ApiHeaders): Promise<unknown> {
   const url = `${baseUrl}/${path.replace(/^\//, "")}`;
-  const res = await fetch(url, {
+  const dispatcher = await starDeliveryFetchDispatcher();
+  const init: RequestInit & { dispatcher?: Dispatcher } = {
     method: "GET",
     headers: { ...headers },
     signal: AbortSignal.timeout(120_000),
-  });
+  };
+  if (dispatcher) init.dispatcher = dispatcher;
+  const res = await fetch(url, init);
   const text = await res.text();
   if (!res.ok) throw new Error(`${path} HTTP ${res.status}: ${text.slice(0, 500)}`);
   if (!text.trim()) throw new Error(`${path} returned empty body`);
@@ -119,21 +161,27 @@ export function parseDailyChallengeListPayload(payload: unknown): unknown[] {
 }
 
 export async function fetchGetDailyChallengeList(baseUrl: string, headers: ApiHeaders): Promise<unknown[]> {
-  const payload = await fetchJsonGet(baseUrl, StarDeliveryApiPaths.getDailyChallenge, headers);
-  return parseDailyChallengeListPayload(payload);
+  return withApiTiming("GetDailyChallenge", async () => {
+    const payload = await fetchJsonGet(baseUrl, StarDeliveryApiPaths.getDailyChallenge, headers);
+    return parseDailyChallengeListPayload(payload);
+  });
 }
 
 /** Next unfinished daily level only (GET). Shape is server-defined; use for status / monitoring. */
 export async function fetchGetActiveLevelDailyChallenge(baseUrl: string, headers: ApiHeaders): Promise<unknown> {
-  return fetchJsonGet(baseUrl, StarDeliveryApiPaths.getActiveLevelDailyChallenge, headers);
+  return withApiTiming("GetActiveLevelDailyChallenge", () =>
+    fetchJsonGet(baseUrl, StarDeliveryApiPaths.getActiveLevelDailyChallenge, headers)
+  );
 }
 
 export async function fetchGetPlanetsAndRoutesRoot(baseUrl: string, headers: ApiHeaders): Promise<Record<string, unknown>> {
-  const mapPayload = await fetchJsonGet(baseUrl, StarDeliveryApiPaths.getPlanetsAndRoutes, headers);
-  if (!mapPayload || typeof mapPayload !== "object" || Array.isArray(mapPayload)) {
-    throw new Error("GetPlanetsAndRoutes returned an unexpected payload");
-  }
-  return mapPayload as Record<string, unknown>;
+  return withApiTiming("GetPlanetsAndRoutes", async () => {
+    const mapPayload = await fetchJsonGet(baseUrl, StarDeliveryApiPaths.getPlanetsAndRoutes, headers);
+    if (!mapPayload || typeof mapPayload !== "object" || Array.isArray(mapPayload)) {
+      throw new Error("GetPlanetsAndRoutes returned an unexpected payload");
+    }
+    return mapPayload as Record<string, unknown>;
+  });
 }
 
 /** Body shape expected by Star Delivery POST endpoints (array of stops). */
@@ -154,7 +202,8 @@ export async function postStarDeliveryJson(
   headers: ApiHeaders
 ): Promise<PostJsonResult> {
   const url = `${baseUrl}/${relativePathWithQuery.replace(/^\//, "")}`;
-  const res = await fetch(url, {
+  const dispatcher = await starDeliveryFetchDispatcher();
+  const init: RequestInit & { dispatcher?: Dispatcher } = {
     method: "POST",
     headers: {
       ...headers,
@@ -162,7 +211,9 @@ export async function postStarDeliveryJson(
     },
     body: JSON.stringify(bodyObj),
     signal: AbortSignal.timeout(120_000),
-  });
+  };
+  if (dispatcher) init.dispatcher = dispatcher;
+  const res = await fetch(url, init);
   const text = await res.text();
   if (!res.ok) {
     const endpoint = relativePathWithQuery.split("?", 1)[0] ?? relativePathWithQuery;
@@ -203,7 +254,10 @@ export async function apiCalculateCoaxium(
 ): Promise<PostJsonResult> {
   const submission = buildSubmissionRoute(routePlanetIds, planetsById);
   const q = new URLSearchParams({ ChallengeId: String(challengeId) }).toString();
-  return postStarDeliveryJson(baseUrl, `${StarDeliveryApiPaths.calculateCoaxium}?${q}`, submission, headers);
+  const path = `${StarDeliveryApiPaths.calculateCoaxium}?${q}`;
+  return withApiTiming(`CalculateCoaxium (challenge ${challengeId})`, () =>
+    postStarDeliveryJson(baseUrl, path, submission, headers)
+  );
 }
 
 export async function apiSubmitChallengeSolution(
@@ -215,5 +269,8 @@ export async function apiSubmitChallengeSolution(
 ): Promise<PostJsonResult> {
   const submission = buildSubmissionRoute(routePlanetIds, planetsById);
   const q = new URLSearchParams({ ChallengeId: String(challengeId) }).toString();
-  return postStarDeliveryJson(baseUrl, `${StarDeliveryApiPaths.submitChallengeSolution}?${q}`, submission, headers);
+  const path = `${StarDeliveryApiPaths.submitChallengeSolution}?${q}`;
+  return withApiTiming(`SubmitChallengeSolution (challenge ${challengeId})`, () =>
+    postStarDeliveryJson(baseUrl, path, submission, headers)
+  );
 }
