@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { isAbsolute, join } from "node:path";
 import {
   apiCalculateCoaxium,
@@ -7,6 +7,7 @@ import {
   fetchGetActiveLevelDailyChallenge,
   fetchGetDailyChallengeList,
   fetchGetPlanetsAndRoutesRoot,
+  warmupApiDispatcher,
 } from "./api.js";
 import type { ApiHeaders } from "./api.js";
 import {
@@ -43,6 +44,11 @@ function printUsage(): void {
       "  Hybrid:  node dist/cli.js --map data.json --daily-api  (local map + GetDailyChallenge)\n" +
       "  Status:  node dist/cli.js --active-level-daily  (GET GetActiveLevelDailyChallenge, JSON to stdout)\n" +
       "  POST:    add --calculate-coaxium (oracle) or --submit (persist); not both.\n" +
+      "\n" +
+      "Cache flags:\n" +
+      "  --no-cache        Disable local GetDailyChallenge cache.\n" +
+      "  --refresh-cache   Force refresh of local GetDailyChallenge cache.\n" +
+      "\n" +
       "Env: STAR_DELIVERY_BASE_URL or VITE_API_BASE_URL, PLAYER_GUID, PLAYER_EMAIL"
   );
 }
@@ -58,6 +64,8 @@ interface ParsedFlags {
   activeLevelDaily: boolean;
   submit: boolean;
   calculateCoaxium: boolean;
+  noCache: boolean;
+  refreshCache: boolean;
   challengePaths: string[];
 }
 
@@ -71,15 +79,20 @@ function parseArgv(argv: string[]): ParsedFlags {
   let activeLevelDaily = false;
   let submit = false;
   let calculateCoaxium = false;
+  let noCache = false;
+  let refreshCache = false;
   const challengePaths: string[] = [];
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]!;
+
     if (a === "--api-map") useApiMap = true;
     else if (a === "--daily-api") dailyApi = true;
     else if (a === "--active-level-daily") activeLevelDaily = true;
     else if (a === "--submit") submit = true;
     else if (a === "--calculate-coaxium") calculateCoaxium = true;
+    else if (a === "--no-cache") noCache = true;
+    else if (a === "--refresh-cache") refreshCache = true;
     else if (a === "--base-url" && argv[i + 1]) baseUrl = argv[++i]!;
     else if (a.startsWith("--base-url=")) baseUrl = a.slice("--base-url=".length);
     else if (a === "--player-guid" && argv[i + 1]) playerGuid = argv[++i]!;
@@ -104,6 +117,8 @@ function parseArgv(argv: string[]): ParsedFlags {
     activeLevelDaily,
     submit,
     calculateCoaxium,
+    noCache,
+    refreshCache,
     challengePaths,
   };
 }
@@ -112,6 +127,7 @@ function sortChallengeRows(entries: Record<string, unknown>[]): ChallengeFields[
   const rows = entries
     .filter((e) => e && typeof e === "object" && !Array.isArray(e))
     .map((raw) => recordToChallenge(raw));
+
   rows.sort((a, b) => (a.challengeId ?? 0) - (b.challengeId ?? 0));
   return rows;
 }
@@ -119,14 +135,74 @@ function sortChallengeRows(entries: Record<string, unknown>[]): ChallengeFields[
 async function loadMapFromLocal(mapPath: string): Promise<ReturnType<typeof mapBlobToPlanetsRoutes>> {
   const text = await readFile(mapPath, "utf8");
   const root = parseJsonRoot(text) as Record<string, unknown>;
+
   if (pick(root, "Planets", "planets") == null && pick(root, "Routes", "routes") == null) {
     throw new Error("Map file must contain Planets/planets and Routes/routes.");
   }
+
   return mapBlobToPlanetsRoutes(root);
 }
 
 function formatElapsedSeconds(startMs: number, endMs: number): string {
   return ((endMs - startMs) / 1000).toFixed(3);
+}
+
+function sanitizeCachePart(s: string): string {
+  return s.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 140);
+}
+
+function dailyChallengeCachePath(baseUrl: string, headers: ApiHeaders): string {
+  const today = new Date().toISOString().slice(0, 10);
+
+  let basePart = "default-base";
+  try {
+    const u = new URL(baseUrl);
+    basePart = `${u.host}${u.pathname}`;
+  } catch {
+    basePart = baseUrl;
+  }
+
+  const safeBase = sanitizeCachePart(basePart);
+  const safeGuid = sanitizeCachePart(headers.PlayerGuid);
+
+  return join(process.cwd(), ".cache", `GetDailyChallenge-${today}-${safeBase}-${safeGuid}.json`);
+}
+
+async function fetchDailyChallengeListMaybeCached(
+  baseUrl: string,
+  headers: ApiHeaders,
+  opts: { noCache: boolean; refreshCache: boolean }
+): Promise<unknown[]> {
+  if (opts.noCache) {
+    return fetchGetDailyChallengeList(baseUrl, headers);
+  }
+
+  const cachePath = dailyChallengeCachePath(baseUrl, headers);
+
+  if (!opts.refreshCache) {
+    try {
+      const text = await readFile(cachePath, "utf8");
+      const parsed = JSON.parse(text) as unknown;
+
+      if (Array.isArray(parsed)) {
+        console.log(`  [cache] GetDailyChallenge hit ${cachePath}`);
+        return parsed;
+      }
+
+      console.log(`  [cache] GetDailyChallenge ignored invalid cache shape ${cachePath}`);
+    } catch {
+      // Cache miss.
+    }
+  }
+
+  const list = await fetchGetDailyChallengeList(baseUrl, headers);
+
+  await mkdir(join(process.cwd(), ".cache"), { recursive: true });
+  await writeFile(cachePath, JSON.stringify(list, null, 2), "utf8");
+
+  console.log(`  [cache] GetDailyChallenge saved ${cachePath}`);
+
+  return list;
 }
 
 async function runBatch(args: {
@@ -142,8 +218,10 @@ async function runBatch(args: {
   const planetsById = new Map(planetsAndRoutes.planets.map((p) => [p.id, p]));
 
   let rank = 0;
+
   for (const ch of sorted) {
     rank += 1;
+
     const level = ch.level ?? rank;
     const cid = ch.challengeId;
     const title = ch.title?.trim();
@@ -151,7 +229,9 @@ async function runBatch(args: {
     const titleBit = title ? ` ${JSON.stringify(title)}` : "";
 
     const challengeStartMs = Date.now();
+
     console.log(`  [challenge] start ${new Date(challengeStartMs).toISOString()}`);
+
     const logChallengeComplete = () => {
       const endMs = Date.now();
       console.log(`  [challenge] end ${new Date(endMs).toISOString()}`);
@@ -176,32 +256,53 @@ async function runBatch(args: {
     console.log(`  → effectiveFuel=${result.effectiveFuel} (${ms.toFixed(0)}ms)`);
     console.log(`  Gross fuel     : ${result.grossFuel}`);
     console.log(`  Bonus collected: ${result.collectedBonus}`);
+
     const routeStr = result.orderedRoute.map(planetLabel).join(" → ");
     console.log(`  Route (${result.orderedRoute.length} planets): ${routeStr}`);
 
     const needPost = submit || calculateCoaxium;
+
     if (needPost) {
       if (!api) throw new Error("Internal error: POST requested without API connection.");
+
       if (cid === undefined) {
         console.log("  → skipped API: challenge has no ChallengeId in payload.");
         logChallengeComplete();
         console.log("");
         continue;
       }
+
       const routeIds = result.orderedRoute.map((p) => p.id);
+
       try {
         console.log("  Testing submission endpoint...");
+
         if (submit) {
-          const { httpStatus, rawBody } = await apiSubmitChallengeSolution(api.baseUrl, api.headers, cid, routeIds, planetsById);
+          const { httpStatus, rawBody } = await apiSubmitChallengeSolution(
+            api.baseUrl,
+            api.headers,
+            cid,
+            routeIds,
+            planetsById
+          );
+
           console.log(`  → HTTP ${httpStatus}: ${rawBody}`);
         } else {
-          const { httpStatus, rawBody } = await apiCalculateCoaxium(api.baseUrl, api.headers, cid, routeIds, planetsById);
+          const { httpStatus, rawBody } = await apiCalculateCoaxium(
+            api.baseUrl,
+            api.headers,
+            cid,
+            routeIds,
+            planetsById
+          );
+
           console.log(`  → HTTP ${httpStatus}: ${rawBody}`);
         }
       } catch (e) {
         console.log(`  → API error: ${e instanceof Error ? e.message : String(e)}`);
       }
     }
+
     logChallengeComplete();
     console.log("");
   }
@@ -236,12 +337,20 @@ async function main(): Promise<number> {
     return 1;
   }
 
+  if (f.noCache && f.refreshCache) {
+    console.error("Use only one of --no-cache or --refresh-cache.");
+    return 1;
+  }
+
   if (f.activeLevelDaily) {
     const apiConn = apiConnection({
       baseUrl: f.baseUrl,
       playerGuid: f.playerGuid,
       playerEmail: f.playerEmail,
     });
+
+    warmupApiDispatcher();
+
     const raw = await fetchGetActiveLevelDailyChallenge(apiConn.baseUrl, apiConn.headers);
     console.log(JSON.stringify(raw, null, 2));
     return 0;
@@ -264,20 +373,70 @@ async function main(): Promise<number> {
 
   let planetsAndRoutes: ReturnType<typeof mapBlobToPlanetsRoutes>;
   let apiConn: { baseUrl: string; headers: ApiHeaders } | null = null;
+  let dailyChallengeList: unknown[] | null = null;
 
+  /**
+   * Main loading strategy:
+   *
+   * 1. If --daily-api + --map:
+   *    - Load local map and GetDailyChallenge in parallel.
+   *
+   * 2. If --daily-api without --map:
+   *    - Fetch GetPlanetsAndRoutes and GetDailyChallenge in parallel.
+   *
+   * 3. If --api-map only:
+   *    - Fetch map from API.
+   *
+   * 4. Otherwise:
+   *    - Load local map.
+   */
   if (f.dailyApi && f.mapPath) {
     apiConn = apiConnection({
       baseUrl: f.baseUrl,
       playerGuid: f.playerGuid,
       playerEmail: f.playerEmail,
     });
-    planetsAndRoutes = await loadMapFromLocal(f.mapPath);
-  } else if (f.useApiMap || f.dailyApi) {
+
+    warmupApiDispatcher();
+
+    const [localMap, list] = await Promise.all([
+      loadMapFromLocal(f.mapPath),
+      fetchDailyChallengeListMaybeCached(apiConn.baseUrl, apiConn.headers, {
+        noCache: f.noCache,
+        refreshCache: f.refreshCache,
+      }),
+    ]);
+
+    planetsAndRoutes = localMap;
+    dailyChallengeList = list;
+  } else if (f.dailyApi) {
     apiConn = apiConnection({
       baseUrl: f.baseUrl,
       playerGuid: f.playerGuid,
       playerEmail: f.playerEmail,
     });
+
+    warmupApiDispatcher();
+
+    const [mapRoot, list] = await Promise.all([
+      fetchGetPlanetsAndRoutesRoot(apiConn.baseUrl, apiConn.headers),
+      fetchDailyChallengeListMaybeCached(apiConn.baseUrl, apiConn.headers, {
+        noCache: f.noCache,
+        refreshCache: f.refreshCache,
+      }),
+    ]);
+
+    planetsAndRoutes = mapBlobToPlanetsRoutes(mapRoot);
+    dailyChallengeList = list;
+  } else if (f.useApiMap) {
+    apiConn = apiConnection({
+      baseUrl: f.baseUrl,
+      playerGuid: f.playerGuid,
+      playerEmail: f.playerEmail,
+    });
+
+    warmupApiDispatcher();
+
     const root = await fetchGetPlanetsAndRoutesRoot(apiConn.baseUrl, apiConn.headers);
     planetsAndRoutes = mapBlobToPlanetsRoutes(root);
   } else {
@@ -285,30 +444,44 @@ async function main(): Promise<number> {
       printUsage();
       return 1;
     }
+
     planetsAndRoutes = await loadMapFromLocal(f.mapPath);
   }
 
   const postFlags = f.submit || f.calculateCoaxium;
+
   if (postFlags && !apiConn) {
     apiConn = apiConnection({
       baseUrl: f.baseUrl,
       playerGuid: f.playerGuid,
       playerEmail: f.playerEmail,
     });
+
+    warmupApiDispatcher();
   }
 
   if (f.dailyApi) {
-    const list = await fetchGetDailyChallengeList(apiConn!.baseUrl, apiConn!.headers);
+    const list =
+      dailyChallengeList ??
+      (await fetchDailyChallengeListMaybeCached(apiConn!.baseUrl, apiConn!.headers, {
+        noCache: f.noCache,
+        refreshCache: f.refreshCache,
+      }));
+
     const entries: Record<string, unknown>[] = [];
+
     for (const raw of list) {
       if (raw == null || typeof raw !== "object" || Array.isArray(raw)) continue;
       entries.push(raw as Record<string, unknown>);
     }
+
     const challenges = sortChallengeRows(entries);
+
     if (challenges.length === 0) {
       console.error("GetDailyChallenge returned no challenge rows.");
       return 1;
     }
+
     await runBatch({
       challenges,
       planetsAndRoutes,
@@ -330,8 +503,11 @@ async function main(): Promise<number> {
     const root = parseJsonRoot(text);
     const entries = entriesFromChallengeDocument(root);
     const challenges = sortChallengeRows(entries);
+
     if (challenges.length === 0) continue;
+
     const isLastFile = fi === f.challengePaths.length - 1;
+
     await runBatch({
       challenges,
       planetsAndRoutes,
@@ -346,6 +522,7 @@ async function main(): Promise<number> {
 }
 
 const cliRunStartMs = Date.now();
+
 console.log(`[cli] start ${new Date(cliRunStartMs).toISOString()}`);
 
 main()

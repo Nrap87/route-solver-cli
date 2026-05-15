@@ -1,4 +1,4 @@
-import type { Dispatcher } from "undici";
+import { Agent, type Dispatcher } from "undici";
 import { pick } from "./adapt.js";
 import type { Planet } from "./solver/types.js";
 
@@ -47,11 +47,14 @@ export function apiConnection(opts: { baseUrl: string; playerGuid: string; playe
     process.env.VITE_API_BASE_URL ||
     DEFAULT_BASE
   ).replace(/\/+$/, "");
+
   const playerGuid = opts.playerGuid || process.env.PLAYER_GUID || "";
   const playerEmail = opts.playerEmail || process.env.PLAYER_EMAIL || "";
+
   if (!playerGuid || !playerEmail) {
     throw new Error("API requires PlayerGuid and PlayerEmail (--player-guid / --player-email or env vars).");
   }
+
   return {
     baseUrl,
     headers: {
@@ -62,33 +65,42 @@ export function apiConnection(opts: { baseUrl: string; playerGuid: string; playe
   };
 }
 
+/**
+ * Node CLI: reuse keep-alive connections to the Star Delivery host so sequential calls
+ * avoid repeated TCP + TLS handshakes.
+ *
+ * This version uses a static `undici` import, avoiding the dynamic import cost that was
+ * showing up as `dispatcher=188ms`.
+ *
+ * Note: if this file is also bundled for browser, consider reverting to the dynamic-import
+ * version or splitting browser/client API code from Node CLI API code.
+ */
 let pooledStarDeliveryDispatcher: Dispatcher | undefined;
-let pooledStarDeliveryDispatcherReady: Promise<Dispatcher | undefined> | null = null;
 
 function runningOnNode(): boolean {
   return typeof globalThis.process !== "undefined" && globalThis.process.versions?.node != null;
 }
 
-/**
- * Node (CLI): reuse keep-alive connections to the Star Delivery host so sequential calls
- * avoid repeated TCP + TLS handshakes. HTTPS and certificate validation are unchanged.
- * Browser builds never load a dispatcher (native fetch).
- */
-async function starDeliveryFetchDispatcher(): Promise<Dispatcher | undefined> {
+function starDeliveryFetchDispatcher(): Dispatcher | undefined {
   if (!runningOnNode()) return undefined;
-  if (pooledStarDeliveryDispatcher) return pooledStarDeliveryDispatcher;
-  if (!pooledStarDeliveryDispatcherReady) {
-    pooledStarDeliveryDispatcherReady = import("undici").then(({ Agent }) => {
-      const agent = new Agent({
-        connections: 16,
-        keepAliveTimeout: 60_000,
-        keepAliveMaxTimeout: 600_000,
-      });
-      pooledStarDeliveryDispatcher = agent;
-      return agent;
+
+  if (!pooledStarDeliveryDispatcher) {
+    pooledStarDeliveryDispatcher = new Agent({
+      connections: 16,
+      keepAliveTimeout: 60_000,
+      keepAliveMaxTimeout: 600_000,
     });
   }
-  return pooledStarDeliveryDispatcherReady;
+
+  return pooledStarDeliveryDispatcher;
+}
+
+/**
+ * Explicitly initializes the Node HTTP agent.
+ * Useful if you want to warm up local setup before measuring API calls.
+ */
+export function warmupApiDispatcher(): void {
+  starDeliveryFetchDispatcher();
 }
 
 async function withApiTiming<T>(operation: string, fn: () => Promise<T>): Promise<T> {
@@ -102,26 +114,33 @@ async function withApiTiming<T>(operation: string, fn: () => Promise<T>): Promis
 
 function pickBool(o: Record<string, unknown>, ...keys: string[]): boolean {
   const v = pick(o, ...keys);
+
   if (v === true) return true;
   if (v === false) return false;
+
   if (typeof v === "string") {
     const s = v.trim().toLowerCase();
     if (s === "true" || s === "1") return true;
     if (s === "false" || s === "0") return false;
   }
+
   return false;
 }
 
 function normalizeSubmissionResult(raw: unknown): SubmissionResult {
   const o = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+
   const coaxRaw = pick(o, "Coaxium", "coaxium");
   let coaxium = 0;
+
   if (coaxRaw != null) {
     const n = parseFloat(String(coaxRaw));
     if (Number.isFinite(n)) coaxium = Math.trunc(n);
   }
+
   const teSec = pick(o, "TimeElapsedInSeconds", "timeElapsedInSeconds");
   const te = pick(o, "TimeElapsed", "timeElapsed");
+
   return {
     is_success: pickBool(o, "IsSuccess", "isSuccess"),
     feedback_message: String(pick(o, "FeedbackMessage", "feedbackMessage") ?? ""),
@@ -133,22 +152,51 @@ function normalizeSubmissionResult(raw: unknown): SubmissionResult {
 
 export async function fetchJsonGet(baseUrl: string, path: string, headers: ApiHeaders): Promise<unknown> {
   const url = `${baseUrl}/${path.replace(/^\//, "")}`;
-  const dispatcher = await starDeliveryFetchDispatcher();
+
+  const t0 = performance.now();
+  const dispatcher = starDeliveryFetchDispatcher();
+  const t1 = performance.now();
+
   const init: RequestInit & { dispatcher?: Dispatcher } = {
     method: "GET",
     headers: { ...headers },
     signal: AbortSignal.timeout(120_000),
   };
+
   if (dispatcher) init.dispatcher = dispatcher;
+
   const res = await fetch(url, init);
+  const t2 = performance.now();
+
   const text = await res.text();
-  if (!res.ok) throw new Error(`${path} HTTP ${res.status}: ${text.slice(0, 500)}`);
-  if (!text.trim()) throw new Error(`${path} returned empty body`);
-  return JSON.parse(text) as unknown;
+  const t3 = performance.now();
+
+  if (!res.ok) {
+    throw new Error(`${path} HTTP ${res.status}: ${text.slice(0, 500)}`);
+  }
+
+  if (!text.trim()) {
+    throw new Error(`${path} returned empty body`);
+  }
+
+  const parsed = JSON.parse(text) as unknown;
+  const t4 = performance.now();
+
+  console.log(
+    `  [api-detail] ${path} ` +
+      `dispatcher=${(t1 - t0).toFixed(0)}ms ` +
+      `headers=${(t2 - t1).toFixed(0)}ms ` +
+      `body=${(t3 - t2).toFixed(0)}ms ` +
+      `json=${(t4 - t3).toFixed(0)}ms ` +
+      `bytes=${text.length}`
+  );
+
+  return parsed;
 }
 
 export function parseDailyChallengeListPayload(payload: unknown): unknown[] {
   if (Array.isArray(payload)) return payload;
+
   if (
     payload &&
     typeof payload === "object" &&
@@ -157,6 +205,7 @@ export function parseDailyChallengeListPayload(payload: unknown): unknown[] {
   ) {
     return (payload as { items: unknown[] }).items;
   }
+
   return [];
 }
 
@@ -174,12 +223,17 @@ export async function fetchGetActiveLevelDailyChallenge(baseUrl: string, headers
   );
 }
 
-export async function fetchGetPlanetsAndRoutesRoot(baseUrl: string, headers: ApiHeaders): Promise<Record<string, unknown>> {
+export async function fetchGetPlanetsAndRoutesRoot(
+  baseUrl: string,
+  headers: ApiHeaders
+): Promise<Record<string, unknown>> {
   return withApiTiming("GetPlanetsAndRoutes", async () => {
     const mapPayload = await fetchJsonGet(baseUrl, StarDeliveryApiPaths.getPlanetsAndRoutes, headers);
+
     if (!mapPayload || typeof mapPayload !== "object" || Array.isArray(mapPayload)) {
       throw new Error("GetPlanetsAndRoutes returned an unexpected payload");
     }
+
     return mapPayload as Record<string, unknown>;
   });
 }
@@ -202,7 +256,11 @@ export async function postStarDeliveryJson(
   headers: ApiHeaders
 ): Promise<PostJsonResult> {
   const url = `${baseUrl}/${relativePathWithQuery.replace(/^\//, "")}`;
-  const dispatcher = await starDeliveryFetchDispatcher();
+
+  const t0 = performance.now();
+  const dispatcher = starDeliveryFetchDispatcher();
+  const t1 = performance.now();
+
   const init: RequestInit & { dispatcher?: Dispatcher } = {
     method: "POST",
     headers: {
@@ -212,13 +270,28 @@ export async function postStarDeliveryJson(
     body: JSON.stringify(bodyObj),
     signal: AbortSignal.timeout(120_000),
   };
+
   if (dispatcher) init.dispatcher = dispatcher;
+
   const res = await fetch(url, init);
+  const t2 = performance.now();
+
   const text = await res.text();
+  const t3 = performance.now();
+
+  console.log(
+    `  [api-detail] ${relativePathWithQuery.split("?", 1)[0] ?? relativePathWithQuery} ` +
+      `dispatcher=${(t1 - t0).toFixed(0)}ms ` +
+      `headers=${(t2 - t1).toFixed(0)}ms ` +
+      `body=${(t3 - t2).toFixed(0)}ms ` +
+      `bytes=${text.length}`
+  );
+
   if (!res.ok) {
     const endpoint = relativePathWithQuery.split("?", 1)[0] ?? relativePathWithQuery;
     throw new Error(`${endpoint} HTTP ${res.status}: ${text.slice(0, 500)}`);
   }
+
   if (!text.trim()) {
     return {
       httpStatus: res.status,
@@ -232,12 +305,15 @@ export async function postStarDeliveryJson(
       },
     };
   }
+
   let parsedJson: unknown;
+
   try {
     parsedJson = JSON.parse(text) as unknown;
   } catch {
     throw new Error("Response is not valid JSON");
   }
+
   return {
     httpStatus: res.status,
     rawBody: text,
@@ -255,6 +331,7 @@ export async function apiCalculateCoaxium(
   const submission = buildSubmissionRoute(routePlanetIds, planetsById);
   const q = new URLSearchParams({ ChallengeId: String(challengeId) }).toString();
   const path = `${StarDeliveryApiPaths.calculateCoaxium}?${q}`;
+
   return withApiTiming(`CalculateCoaxium (challenge ${challengeId})`, () =>
     postStarDeliveryJson(baseUrl, path, submission, headers)
   );
@@ -270,6 +347,7 @@ export async function apiSubmitChallengeSolution(
   const submission = buildSubmissionRoute(routePlanetIds, planetsById);
   const q = new URLSearchParams({ ChallengeId: String(challengeId) }).toString();
   const path = `${StarDeliveryApiPaths.submitChallengeSolution}?${q}`;
+
   return withApiTiming(`SubmitChallengeSolution (challenge ${challengeId})`, () =>
     postStarDeliveryJson(baseUrl, path, submission, headers)
   );
