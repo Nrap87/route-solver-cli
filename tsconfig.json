@@ -14,5 +14,10 @@
     "noUnusedParameters": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/solver/__tests__/**", "src/solver/solver.worker.ts"]
+  "exclude": [
+    "src/solver/__tests__/**",
+    "src/solver/solver.worker.ts",
+    "src/client_Maria.ts",
+    "src/useChallenges_maria.ts"
+  ]
 }

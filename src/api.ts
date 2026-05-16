@@ -5,8 +5,8 @@ import type { Planet } from "./solver/types.js";
 const DEFAULT_BASE = "https://wecode.outsystems.com/StarDelivery_Ngin/rest/StarDeliveryServices";
 
 /**
- * Star Delivery REST paths (relative to `VITE_API_BASE_URL` / `STAR_DELIVERY_BASE_URL`).
- * All calls send {@link ApiHeaders} (`PlayerGuid`, `PlayerEmail`, `Accept`).
+ * Star Delivery REST paths.
+ * All calls send ApiHeaders: PlayerGuid, PlayerEmail, Accept.
  */
 export const StarDeliveryApiPaths = {
   getPlanetsAndRoutes: "GetPlanetsAndRoutes",
@@ -22,7 +22,6 @@ export interface ApiHeaders {
   PlayerEmail: string;
 }
 
-/** Normalized POST response (CalculateCoaxium / SubmitChallengeSolution). */
 export interface SubmissionResult {
   is_success: boolean;
   feedback_message: string;
@@ -65,16 +64,6 @@ export function apiConnection(opts: { baseUrl: string; playerGuid: string; playe
   };
 }
 
-/**
- * Node CLI: reuse keep-alive connections to the Star Delivery host so sequential calls
- * avoid repeated TCP + TLS handshakes.
- *
- * This version uses a static `undici` import, avoiding the dynamic import cost that was
- * showing up as `dispatcher=188ms`.
- *
- * Note: if this file is also bundled for browser, consider reverting to the dynamic-import
- * version or splitting browser/client API code from Node CLI API code.
- */
 let pooledStarDeliveryDispatcher: Dispatcher | undefined;
 
 function runningOnNode(): boolean {
@@ -96,11 +85,27 @@ function starDeliveryFetchDispatcher(): Dispatcher | undefined {
 }
 
 /**
- * Explicitly initializes the Node HTTP agent.
- * Useful if you want to warm up local setup before measuring API calls.
+ * Creates/reuses the local undici Agent.
+ *
+ * Important:
+ * This does NOT open a network/TLS connection by itself.
  */
 export function warmupApiDispatcher(): void {
   starDeliveryFetchDispatcher();
+}
+
+/**
+ * Performs a real lightweight API request before the timing-critical request.
+ *
+ * This can open DNS/TCP/TLS/HTTP connection state inside the current Node process.
+ * The connection can then be reused by the later GetDailyChallenge request.
+ */
+export async function prewarmApiConnection(baseUrl: string, headers: ApiHeaders): Promise<void> {
+  try {
+    await fetchJsonGet(baseUrl, StarDeliveryApiPaths.getActiveLevelDailyChallenge, headers);
+  } catch {
+    // Ignore warmup errors. The real request can still run and report its own error.
+  }
 }
 
 async function withApiTiming<T>(operation: string, fn: () => Promise<T>): Promise<T> {
@@ -216,7 +221,6 @@ export async function fetchGetDailyChallengeList(baseUrl: string, headers: ApiHe
   });
 }
 
-/** Next unfinished daily level only (GET). Shape is server-defined; use for status / monitoring. */
 export async function fetchGetActiveLevelDailyChallenge(baseUrl: string, headers: ApiHeaders): Promise<unknown> {
   return withApiTiming("GetActiveLevelDailyChallenge", () =>
     fetchJsonGet(baseUrl, StarDeliveryApiPaths.getActiveLevelDailyChallenge, headers)
@@ -238,7 +242,6 @@ export async function fetchGetPlanetsAndRoutesRoot(
   });
 }
 
-/** Body shape expected by Star Delivery POST endpoints (array of stops). */
 export function buildSubmissionRoute(
   fullPath: number[],
   planetsById: Map<number, Planet>
