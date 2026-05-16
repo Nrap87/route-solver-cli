@@ -57,6 +57,17 @@ on:
           If true, passes --no-log-file to the cron script (no route_solver_cron_*.log under log_dir; child output to job log only). Skips log artifact upload.
         type: boolean
         default: false
+      prelaunch_ms:
+        description: |
+          Spawn the child CLI this many ms before each scheduled minute (0 = disabled).
+          With daily-api / map-daily-api / api-map-daily-api, cron also forwards --wait-until-next-minute (and optional --prewarm-api) to the child.
+        type: string
+        default: "0"
+      prewarm_api:
+        description: |
+          When true and prelaunch_ms > 0, pass --prewarm-api to the child (only effective for *-daily-api cron modes).
+        type: boolean
+        default: false
 
 jobs:
   tsp-cron:
@@ -93,6 +104,8 @@ jobs:
           CP_RAW="${{ github.event.inputs.challenge_paths }}"
           SUBMIT="${{ github.event.inputs.submit }}"
           NO_LOG="${{ github.event.inputs.no_log_file }}"
+          PRELAUNCH_MS="${{ github.event.inputs.prelaunch_ms }}"
+          PREWARM="${{ github.event.inputs.prewarm_api }}"
 
           CRON_ARGS=(node ./scripts/run-cron.mjs --every-minute --window-start="${{ github.event.inputs.window_start }}" --window-end="${{ github.event.inputs.window_end }}" --log-dir="$LOG_DIR")
           if [ "$SUBMIT" = "true" ]; then
@@ -100,6 +113,12 @@ jobs:
           fi
           if [ "$NO_LOG" = "true" ]; then
             CRON_ARGS+=(--no-log-file)
+          fi
+          if [[ "${PRELAUNCH_MS:-0}" =~ ^[0-9]+$ ]] && [ "${PRELAUNCH_MS:-0}" -gt 0 ]; then
+            CRON_ARGS+=(--prelaunch-ms="${PRELAUNCH_MS}")
+            if [ "$PREWARM" = "true" ]; then
+              CRON_ARGS+=(--prewarm-api)
+            fi
           fi
 
           case "$MODE" in

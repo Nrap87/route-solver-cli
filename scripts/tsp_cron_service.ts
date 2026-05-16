@@ -668,16 +668,30 @@ async function main(): Promise<number> {
     return 2;
   }
 
+  const childUsesDailyTiming =
+    childCliArgv.includes("--daily-api") || childCliArgv.includes("--active-daily-api");
+
   if (prelaunchMs > 0) {
-    if (!childCliArgv.includes("--wait-until-next-minute")) {
-      childCliArgv.push("--wait-until-next-minute");
-    }
+    console.log(
+      `[schedule] cron early launch: prelaunchMs=${prelaunchMs}` +
+        (childUsesDailyTiming
+          ? `, forward prewarmApi=${cronPrewarmApi} to child (--daily-api / --active-daily-api)`
+          : " (map/challenge child: no --wait-until-next-minute; only spawn happens earlier)")
+    );
 
-    if (cronPrewarmApi && !childCliArgv.includes("--prewarm-api")) {
-      childCliArgv.push("--prewarm-api");
-    }
+    if (childUsesDailyTiming) {
+      if (!childCliArgv.includes("--wait-until-next-minute")) {
+        childCliArgv.push("--wait-until-next-minute");
+      }
 
-    console.log(`[schedule] early child launch enabled: prelaunchMs=${prelaunchMs}, prewarmApi=${cronPrewarmApi}`);
+      if (cronPrewarmApi && !childCliArgv.includes("--prewarm-api")) {
+        childCliArgv.push("--prewarm-api");
+      }
+    } else if (cronPrewarmApi) {
+      console.error(
+        "[schedule] --prewarm-api ignored for this child mode (only applies with --daily-api or --active-daily-api on the child CLI)."
+      );
+    }
   }
 
   if (process.env.TSP_SCHED_DEBUG?.trim()) {

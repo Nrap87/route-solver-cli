@@ -203,6 +203,8 @@ Supporting **`workflow_dispatch` inputs**:
 | **`map_path`** | Repo-relative path to map JSON (for **`map-*`** modes). Default `data.json` where applicable. |
 | **`challenge_paths`** | Comma-separated repo-relative paths (for **`*-challenge`** modes). Example: `challenges/a.json,challenges/b.json`. |
 | **`submit`** | When true (default), **`--submit`** is appended for the child. |
+| **`prelaunch_ms`** | Non-negative ms; when **> 0**, cron gets **`--prelaunch-ms`** (spawn child early each tick). Default **`0`** (off). |
+| **`prewarm_api`** | When true and **`prelaunch_ms` > 0**, cron gets **`--prewarm-api`** (child TLS warmup; only used for **`*-daily-api`** modes). |
 
 ### `.github/workflows/tsp-cron-window.yml`
 
@@ -216,6 +218,7 @@ Runs **`node ./scripts/run-cron.mjs`** with **`--every-minute`**, **`--window-st
 | **`timezone`** | IANA zone (e.g. `UTC`, `Europe/London`). |
 | **`log_dir`** | Directory for cron log files (repo-relative or absolute). |
 | **`cron_mode`**, **`map_path`**, **`challenge_paths`**, **`submit`** | Child CLI mode; see tables above. |
+| **`prelaunch_ms`**, **`prewarm_api`** | Optional early spawn / API prewarm (see shared inputs table). |
 
 Artifacts: uploaded **`log_dir`** (cron log files such as `route_solver_cron_*.log`).
 
@@ -229,6 +232,7 @@ Same **`cron_mode`** / **`map_path`** / **`challenge_paths`** / **`submit`** sem
 |----------------|-------------|
 | **`log_dir`** | Where **`--run-once`** writes **`route_solver_cron_*.log`** (default **`logs`**). |
 | **`cron_mode`**, **`map_path`**, **`challenge_paths`**, **`submit`** | Same as the window workflow. |
+| **`prelaunch_ms`**, **`prewarm_api`** | Same as the window workflow. |
 
 Artifacts: upload the configured **`log_dir`** (default **`logs/`**).
 

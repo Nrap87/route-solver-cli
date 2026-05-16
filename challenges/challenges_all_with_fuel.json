@@ -570,5 +570,65 @@
     "challengeName": "Lost Highway: Rush Hour",
     "isFinished": true,
     "realFuel": 4409
+  },
+  {
+    "startPlanetId": 151,
+    "mandatoryPlanetIds": [
+      165,
+      78
+    ],
+    "forbiddenPlanetIds": [],
+    "bonusStops": [],
+    "challengeId": 112,
+    "challengeName": "Now This Is Podracing: Boonta Eve Classic",
+    "isFinished": true,
+    "realFuel": 4805
+  },
+  {
+    "startPlanetId": 151,
+    "mandatoryPlanetIds": [
+      165,
+      78
+    ],
+    "forbiddenPlanetIds": [
+      50,
+      184,
+      174
+    ],
+    "bonusStops": [],
+    "challengeId": 113,
+    "challengeName": "Now This Is Podracing: Canyon run",
+    "isFinished": true,
+    "realFuel": 5032
+  },
+  {
+    "startPlanetId": 151,
+    "mandatoryPlanetIds": [
+      165,
+      78
+    ],
+    "forbiddenPlanetIds": [
+      50,
+      184,
+      174
+    ],
+    "bonusStops": [
+      {
+        "planetId": 105,
+        "value": 200
+      },
+      {
+        "planetId": 23,
+        "value": 200
+      },
+      {
+        "planetId": 186,
+        "value": 450
+      }
+    ],
+    "challengeId": 114,
+    "challengeName": "Now This Is Podracing: Sebulba's revenge",
+    "isFinished": true,
+    "realFuel": 4791
   }
 ]
