@@ -19,6 +19,10 @@ Because you can leave the “key” planets and cross the full graph in between,
 
 The public entry point is `solve()` in `src/solver/solve.ts`: tiny mandatory-only challenges use a **fast path**; everything else goes through **`heldKarpSolve`**, which combines timeout limits, optional **orienteering** DP for bonus subsets, and a **Held–Karp–style** best-first generator over orderings (`heldKarp.ts`).
 
+## .NET / ODC External Library
+
+A single **.NET 8** ODC upload project (Held–Karp port of this repo’s solver) lives in the sibling folder **`../RouteSolver-Cli-DotNet-ODC/`** — not under `route-solver-cli/dotnet/`.
+
 ## Requirements
 
 - **Node.js** ≥ 18.19

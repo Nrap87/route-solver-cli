@@ -1,0 +1,102 @@
+[
+  {
+    "startPlanetId": 154,
+    "mandatoryPlanetIds": [
+      52,
+      188,
+      13,
+      44,
+      25,
+      152,
+      49
+    ],
+    "forbiddenPlanetIds": [],
+    "bonusStops": [],
+    "challengeId": 115,
+    "challengeName": "This Is The End: Final Lap",
+    "isFinished": true
+  },
+  {
+    "startPlanetId": 154,
+    "mandatoryPlanetIds": [
+      52,
+      188,
+      13,
+      44,
+      25,
+      152,
+      49
+    ],
+    "forbiddenPlanetIds": [
+      157,
+      82,
+      83,
+      84,
+      135,
+      191,
+      92,
+      155,
+      118
+    ],
+    "bonusStops": [],
+    "challengeId": 116,
+    "challengeName": "This Is The End: Blockade",
+    "isFinished": true
+  },
+  {
+    "startPlanetId": 154,
+    "mandatoryPlanetIds": [
+      52,
+      188,
+      13,
+      44,
+      25,
+      152,
+      49
+    ],
+    "forbiddenPlanetIds": [
+      157,
+      82,
+      83,
+      84,
+      135,
+      191,
+      92,
+      155,
+      118
+    ],
+    "bonusStops": [
+      {
+        "planetId": 137,
+        "value": 100
+      },
+      {
+        "planetId": 73,
+        "value": 50
+      },
+      {
+        "planetId": 86,
+        "value": 50
+      },
+      {
+        "planetId": 27,
+        "value": 200
+      },
+      {
+        "planetId": 56,
+        "value": 100
+      },
+      {
+        "planetId": 99,
+        "value": 100
+      },
+      {
+        "planetId": 172,
+        "value": 600
+      }
+    ],
+    "challengeId": 117,
+    "challengeName": "This Is The End: Revolution",
+    "isFinished": true
+  }
+]
