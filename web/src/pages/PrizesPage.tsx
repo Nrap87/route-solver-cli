@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   apiCalculateCoaxium,
   apiSubmitChallengeSolution,
@@ -25,9 +25,9 @@ import {
   rawChallengeSortKey,
 } from "../starDeliveryExports";
 import {
-  DEFAULT_PLAYER_EMAIL,
-  DEFAULT_PLAYER_GUID,
   DEFAULT_STAR_DELIVERY_REST_BASE,
+  resolvePlayerEmail,
+  resolvePlayerGuid,
 } from "../starDeliveryDefaults";
 import {
   entriesFromChallengeDocument,
@@ -38,6 +38,9 @@ import {
 const STORAGE_GUID = "sd_player_guid";
 const STORAGE_EMAIL = "sd_player_email";
 const STORAGE_API_BASE = "sd_api_base";
+
+const CREDENTIALS_MISSING_MSG =
+  "Player credentials are not configured (set VITE_PLAYER_GUID / VITE_PLAYER_EMAIL or defaults in starDeliveryDefaults).";
 
 function readStored(key: string, fallback: string): string {
   try {
@@ -85,7 +88,7 @@ function buildRouteSummaryStrings(result: SolveResult): string[] {
     return n ? `${n} (${p.id})` : `#${p.id}`;
   });
   return [
-    `route (${result.orderedRoute.length}): ${names.join(" → ")}`,
+    `route (${result.orderedRoute.length}): ${names.join(" â†’ ")}`,
     `routeIds: [${result.orderedRoute.map((p) => p.id).join(", ")}]`,
   ];
 }
@@ -122,8 +125,8 @@ function formatSolveOneLiner(ch: ChallengeFields, result: SolveResult, solveMs?:
 }
 
 export function PrizesPage() {
-  const [playerGuid, setPlayerGuid] = useState(() => readStored(STORAGE_GUID, DEFAULT_PLAYER_GUID));
-  const [playerEmail, setPlayerEmail] = useState(() => readStored(STORAGE_EMAIL, DEFAULT_PLAYER_EMAIL));
+  const playerGuid = useMemo(() => resolvePlayerGuid(), []);
+  const playerEmail = useMemo(() => resolvePlayerEmail(), []);
   const [apiBaseUrl, setApiBaseUrl] = useState(() =>
     readStored(STORAGE_API_BASE, DEFAULT_STAR_DELIVERY_REST_BASE),
   );
@@ -174,7 +177,7 @@ export function PrizesPage() {
   const loadDaily = useCallback(async () => {
     setLoadError(null);
     if (!headers) {
-      setLoadError("Enter Player GUID and Player email.");
+      setLoadError(CREDENTIALS_MISSING_MSG);
       return;
     }
     persistCreds();
@@ -223,7 +226,7 @@ export function PrizesPage() {
     async (basename: string) => {
       setLoadError(null);
       if (!headers) {
-        setLoadError("Enter Player GUID and Player email.");
+        setLoadError(CREDENTIALS_MISSING_MSG);
         return;
       }
       persistCreds();
@@ -279,10 +282,10 @@ export function PrizesPage() {
   const autoLoadOnce = useRef(false);
   useEffect(() => {
     if (autoLoadOnce.current) return;
-    if (!playerGuid.trim() || !playerEmail.trim()) return;
+    if (!headers) return;
     autoLoadOnce.current = true;
     void loadDaily();
-  }, [loadDaily, playerGuid, playerEmail]);
+  }, [loadDaily, headers]);
 
   const current = challenges[activeTab];
   const currentRaw = sortedRawRows[activeTab];
@@ -322,7 +325,7 @@ export function PrizesPage() {
     if (!current || !headers) return;
     const cid = current.challengeId;
     if (cid === undefined) {
-      setLogText("This row has no ChallengeId — cannot call CalculateCoaxium.");
+      setLogText("This row has no ChallengeId â€” cannot call CalculateCoaxium.");
       setLogError(true);
       return;
     }
@@ -365,7 +368,7 @@ export function PrizesPage() {
     if (!current || !headers) return;
     const cid = current.challengeId;
     if (cid === undefined) {
-      setLogText("This row has no ChallengeId — cannot call SubmitChallengeSolution.");
+      setLogText("This row has no ChallengeId â€” cannot call SubmitChallengeSolution.");
       setLogError(true);
       return;
     }
@@ -428,7 +431,7 @@ export function PrizesPage() {
       if (!ok) return;
     }
     setMasterBusy(mode);
-    setMasterLog("Running…");
+    setMasterLog("Runningâ€¦");
     const rootUrl = restBaseForRequests(apiBaseUrl);
     const lines: string[] = [];
     let anyErr = false;
@@ -442,7 +445,7 @@ export function PrizesPage() {
         let solveMs = 0;
         let apiMsTotal = 0;
         let result: SolveResult;
-        lines.push(`━━ ${tabLabel(ch, i)} ━━`);
+        lines.push(`â”â” ${tabLabel(ch, i)} â”â”`);
         try {
           const ts = performance.now();
           result = runSolveCore(ch);
@@ -469,7 +472,7 @@ export function PrizesPage() {
         const cid = ch.challengeId;
         if (mode === "coaxium") {
           if (cid === undefined) {
-            lines.push(`  → skip CalculateCoaxium (no ChallengeId)`);
+            lines.push(`  â†’ skip CalculateCoaxium (no ChallengeId)`);
             anyErr = true;
           } else {
             try {
@@ -483,19 +486,19 @@ export function PrizesPage() {
               );
               const apiMs = performance.now() - ta;
               apiMsTotal += apiMs;
-              lines.push(`  → CalculateCoaxium HTTP ${post.httpStatus}  success=${post.parsed.is_success}  (${formatElapsed(apiMs)})`);
+              lines.push(`  â†’ CalculateCoaxium HTTP ${post.httpStatus}  success=${post.parsed.is_success}  (${formatElapsed(apiMs)})`);
               if (!post.parsed.is_success) anyErr = true;
             } catch (e) {
               anyErr = true;
-              lines.push(`  → CalculateCoaxium ERROR ${e instanceof Error ? e.message : String(e)}`);
+              lines.push(`  â†’ CalculateCoaxium ERROR ${e instanceof Error ? e.message : String(e)}`);
             }
           }
         }
         if (mode === "submit") {
           if (finished) {
-            lines.push(`  → Submit skipped (IsFinished on server)`);
+            lines.push(`  â†’ Submit skipped (IsFinished on server)`);
           } else if (cid === undefined) {
-            lines.push(`  → skip Submit (no ChallengeId)`);
+            lines.push(`  â†’ skip Submit (no ChallengeId)`);
             anyErr = true;
           } else {
             try {
@@ -509,19 +512,19 @@ export function PrizesPage() {
               );
               const apiMs = performance.now() - ta;
               apiMsTotal += apiMs;
-              lines.push(`  → SubmitChallengeSolution HTTP ${post.httpStatus}  success=${post.parsed.is_success}  (${formatElapsed(apiMs)})`);
+              lines.push(`  â†’ SubmitChallengeSolution HTTP ${post.httpStatus}  success=${post.parsed.is_success}  (${formatElapsed(apiMs)})`);
               if (!post.parsed.is_success) anyErr = true;
             } catch (e) {
               anyErr = true;
-              lines.push(`  → Submit ERROR ${e instanceof Error ? e.message : String(e)}`);
+              lines.push(`  â†’ Submit ERROR ${e instanceof Error ? e.message : String(e)}`);
             }
           }
         }
         const stepWall = performance.now() - tStep0;
         lines.push(
           `  timings: solve ${formatElapsed(solveMs)}` +
-            (apiMsTotal > 0 ? `  ·  API ${formatElapsed(apiMsTotal)}` : "") +
-            `  ·  challenge wall ${formatElapsed(stepWall)}`,
+            (apiMsTotal > 0 ? `  Â·  API ${formatElapsed(apiMsTotal)}` : "") +
+            `  Â·  challenge wall ${formatElapsed(stepWall)}`,
         );
         lines.push("");
       }
@@ -570,13 +573,13 @@ export function PrizesPage() {
     <div className="dash">
       <header className="dash-brand">
         <div className="dash-presents">
-          ● <span>OUTSYSTEMS</span> PRESENTS
+          â— <span>OUTSYSTEMS</span> PRESENTS
         </div>
         <h1 className="dash-title">
           <span className="dash-title-star">Star</span>
           <span className="dash-title-delivery">Delivery</span>
         </h1>
-        <div className="dash-sub">Galaxy logistics · Daily challenge · Prizes</div>
+        <div className="dash-sub">Galaxy logistics Â· Daily challenge Â· Prizes</div>
       </header>
 
       {loadError ? <div className="dash-err">{loadError}</div> : null}
@@ -592,27 +595,6 @@ export function PrizesPage() {
               value={apiBaseUrl}
               onChange={(e) => setApiBaseUrl(e.target.value)}
               placeholder={DEFAULT_STAR_DELIVERY_REST_BASE}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="guid">Player GUID</label>
-            <input
-              id="guid"
-              autoComplete="off"
-              value={playerGuid}
-              onChange={(e) => setPlayerGuid(e.target.value)}
-              placeholder={DEFAULT_PLAYER_GUID}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor="email">Player email</label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              value={playerEmail}
-              onChange={(e) => setPlayerEmail(e.target.value)}
-              placeholder={DEFAULT_PLAYER_EMAIL}
             />
           </div>
           <div className="field field--full">
@@ -648,7 +630,7 @@ export function PrizesPage() {
               disabled={loading || !headers}
               onClick={() => void reloadCurrentSource()}
             >
-              {loading ? "Loading…" : "Load / reload"}
+              {loading ? "Loadingâ€¦" : "Load / reload"}
             </button>
           </div>
         </div>
@@ -661,8 +643,8 @@ export function PrizesPage() {
       {loading && !hasData ? (
         <div className="dash-loading">
           {challengeSource === "daily"
-            ? "Loading map and missions from the API…"
-            : `Loading map from the API and challenges from ${challengeSource}…`}
+            ? "Loading map and missions from the APIâ€¦"
+            : `Loading map from the API and challenges from ${challengeSource}â€¦`}
         </div>
       ) : null}
 
@@ -670,13 +652,13 @@ export function PrizesPage() {
         <>
           <div className="dash-toolbar">
             <button type="button" className="btn-dash" onClick={onExportMap}>
-              Export map → data.json
+              Export map â†’ data.json
             </button>
             <button type="button" className="btn-dash btn-dash--sec" onClick={onExportChallenges}>
-              Export challenges → challenges.json
+              Export challenges â†’ challenges.json
             </button>
             <button type="button" className="btn-dash btn-dash--gold" onClick={onExportBundle}>
-              Export bundle → star-delivery-bundle.json
+              Export bundle â†’ star-delivery-bundle.json
             </button>
             <button type="button" className="btn-dash btn-dash--sec" onClick={() => void reloadCurrentSource()}>
               Reload
@@ -691,7 +673,7 @@ export function PrizesPage() {
               disabled={masterDisabled}
               onClick={() => void runMasterBatch("solve")}
             >
-              {masterBusy === "solve" ? "…" : "Solve all"}
+              {masterBusy === "solve" ? "â€¦" : "Solve all"}
             </button>
             <button
               type="button"
@@ -699,7 +681,7 @@ export function PrizesPage() {
               disabled={masterDisabled}
               onClick={() => void runMasterBatch("coaxium")}
             >
-              {masterBusy === "coaxium" ? "…" : "Calculate Coaxium all"}
+              {masterBusy === "coaxium" ? "â€¦" : "Calculate Coaxium all"}
             </button>
             <button
               type="button"
@@ -707,7 +689,7 @@ export function PrizesPage() {
               disabled={masterDisabled}
               onClick={() => void runMasterBatch("submit")}
             >
-              {masterBusy === "submit" ? "…" : "Submit all"}
+              {masterBusy === "submit" ? "â€¦" : "Submit all"}
             </button>
           </div>
           {masterLog ? <pre className="dash-master-log">{masterLog}</pre> : null}
@@ -780,12 +762,12 @@ export function PrizesPage() {
           </div>
 
           <div className="dash-missions-head">
-            {challengeSource === "daily" ? "Today’s missions" : `File missions · ${challengeSource}`}
+            {challengeSource === "daily" ? "Todayâ€™s missions" : `File missions Â· ${challengeSource}`}
           </div>
           <div className="tabs-dash" role="tablist">
             {challenges.map((ch, i) => {
               const short = tabLabel(ch, i);
-              const shortDisp = short.length > 28 ? `${short.slice(0, 26)}…` : short;
+              const shortDisp = short.length > 28 ? `${short.slice(0, 26)}â€¦` : short;
               return (
                 <button
                   key={`${ch.challengeId ?? "noid"}-${i}`}
@@ -797,7 +779,7 @@ export function PrizesPage() {
                 >
                   <div className="tab-dash-lvl">LEVEL {String(i + 1).padStart(2, "0")}</div>
                   <div className="tab-dash-ttl">{escapeHtml(shortDisp)}</div>
-                  <div className="tab-dash-dots">{"●".repeat(i + 1)}</div>
+                  <div className="tab-dash-dots">{"â—".repeat(i + 1)}</div>
                 </button>
               );
             })}
@@ -807,9 +789,9 @@ export function PrizesPage() {
             <article className="dash-mission-card">
               <div className="dash-mission-kicker">
                 {challengeSource === "daily" ? (
-                  <>— Today’s mission · {monthDay(new Date()).toUpperCase()}</>
+                  <>â€” Todayâ€™s mission Â· {monthDay(new Date()).toUpperCase()}</>
                 ) : (
-                  <>— From file · {escapeHtml(challengeSource)}</>
+                  <>â€” From file Â· {escapeHtml(challengeSource)}</>
                 )}
               </div>
               <h2 className="dash-mission-title">{escapeHtml(tabLabel(current, activeTab))}</h2>
@@ -844,10 +826,10 @@ export function PrizesPage() {
 
               <div className="dash-mission-toolbar">
                 <button type="button" className="btn-act" disabled={buttonsDisabled} onClick={() => void onSolve()}>
-                  {busy === "solve" ? "Solving…" : "Solve"}
+                  {busy === "solve" ? "Solvingâ€¦" : "Solve"}
                 </button>
                 <button type="button" className="btn-act btn-act--gold" disabled={buttonsDisabled} onClick={() => void onCoaxium()}>
-                  {busy === "coaxium" ? "…" : "Calculate Coaxium"}
+                  {busy === "coaxium" ? "â€¦" : "Calculate Coaxium"}
                 </button>
                 <button
                   type="button"
@@ -855,7 +837,7 @@ export function PrizesPage() {
                   disabled={buttonsDisabled || currentFinished}
                   onClick={() => void onSubmit()}
                 >
-                  {busy === "submit" ? "…" : "Submit"}
+                  {busy === "submit" ? "â€¦" : "Submit"}
                 </button>
               </div>
               {logText ? <pre className={`dash-action-result${logError ? " dash-action-result--err" : ""}`}>{logText}</pre> : null}
