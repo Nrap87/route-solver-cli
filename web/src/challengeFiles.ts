@@ -18,8 +18,15 @@ const BASENAMES = Object.keys(bundled)
 /** Default bundled challenge set for the web UI. */
 export const DEFAULT_CHALLENGE_FILE = "challenges_1405.json";
 
+/** e.g. challenges_1405.json, challenges_0805.json */
+const CHALLENGE_DATE_FILE_RE = /^challenges_\d{4}\.json$/i;
+
+export function isDateStampedChallengeFile(basename: string): boolean {
+  return CHALLENGE_DATE_FILE_RE.test(basename);
+}
+
 export function listBundledChallengeFilenames(): string[] {
-  return [...BASENAMES];
+  return BASENAMES.filter(isDateStampedChallengeFile);
 }
 
 export function getBundledChallengeJson(basename: string): unknown {
