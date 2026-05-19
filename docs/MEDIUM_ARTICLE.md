@@ -54,7 +54,19 @@ Precompute direct leg costs for every planet pair (main **×0.5**, other **×⅔
 From each strategically important planet, run shortest-path search across the full map (respecting forbidden nodes). You now know the true cheapest cost—and the actual path—to move between key locations, including through anonymous intermediates.
 
 **3. Order, then realize.**  
-Search over visit orders in that compressed metric space. Bonus planets turn the problem toward **orienteering**: which optional stops are worth detours? For each promising order, **realize** it on the real graph (see below).
+Search over visit orders in that compressed metric space. Bonus planets turn the problem toward **orienteering**: which optional stops are worth detours? For each promising order, **realize** it on the real graph (see figure below).
+
+**↓ Insert diagram here on Medium:** upload `docs/images/route-realization-diagram.svg` (or export as PNG). Delete this line after adding the image.
+
+*Figure: **A (blue)** — *metric view*: only challenge planets in a row; dashed lines are planning shortcuts (“how cheap is A→B?”), not real flights. **B (orange)** — *real graph*: the same order split into four legs (**S→A**, **A→B**, **B→C**, **C→S**); gray pills are extra planets on each leg; orange segments are hops the API scores.*
+
+```
+  A. METRIC (planning — not submitted)          then REALIZE          B. REAL (submitted to API)
+
+  [S] - - - [A] - - - [B] - - - [C] - - - [S]  ──────────────►  [S]=p1=p2=[A]=p3=[B]=p4=[C]=p5=p6=[S]
+       ↑ dashed = estimate only                      ↑ solid = every real hop counts toward fuel
+       other planets on the map are not shown
+```
 
 An ordering that looks optimal on a tiny “key planet only” sketch can fail once embedded in the full galaxy. The implementation intentionally separates **metric scoring** from **physical embedding** so the numbers you submit match what a human would fly.
 

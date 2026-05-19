@@ -40,6 +40,15 @@ Medium **does not** load images from markdown like `![](images/file.png)`. Local
 | Image in wrong place | Medium splits pasted HTML oddly — add image **after** text is pasted, not before. |
 | Broken `![](...)` text visible | Remove those lines; they are not valid on Medium. |
 
+## Article diagrams
+
+| File | Use in article |
+|------|----------------|
+| `images/route-realization-diagram.svg` | Section *Why textbook TSP is not enough* — metric vs realized route |
+| Leaderboard screenshot | Section *How it ended* |
+
+SVG uploads to Medium usually work; if not, open the SVG in a browser, screenshot, or export to PNG.
+
 ## Do not use for this article
 
 - **Markdown image syntax** in the pasted body (`![](...)`).

@@ -15,6 +15,9 @@ const BASENAMES = Object.keys(bundled)
   .filter((n) => n.endsWith(".json"))
   .sort((a, b) => a.localeCompare(b));
 
+/** Default bundled challenge set for the web UI. */
+export const DEFAULT_CHALLENGE_FILE = "challenges_1405.json";
+
 export function listBundledChallengeFilenames(): string[] {
   return [...BASENAMES];
 }

@@ -2,7 +2,6 @@
 import {
   apiCalculateCoaxium,
   apiSubmitChallengeSolution,
-  fetchGetDailyChallengeList,
   fetchGetPlanetsAndRoutesRoot,
 } from "@cli/api";
 import type { ApiHeaders } from "@cli/api";
@@ -30,6 +29,7 @@ import {
   resolvePlayerGuid,
 } from "../starDeliveryDefaults";
 import {
+  DEFAULT_CHALLENGE_FILE,
   entriesFromChallengeDocument,
   getBundledChallengeJson,
   listBundledChallengeFilenames,
@@ -69,10 +69,6 @@ function descriptionLines(ch: ChallengeFields): string[] {
     lines.push("Some planets refuel your ship and might be worth the detour.");
   }
   return lines;
-}
-
-function monthDay(d: Date): string {
-  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 function formatElapsed(ms: number): string {
@@ -142,8 +138,8 @@ export function PrizesPage() {
   const [logText, setLogText] = useState("");
   const [logError, setLogError] = useState(false);
   const [masterLog, setMasterLog] = useState("");
-  /** `"daily"` = GetDailyChallenge list; otherwise bundled `challenges/*.json` basename. */
-  const [challengeSource, setChallengeSource] = useState<"daily" | string>("daily");
+  /** Bundled `challenges/*.json` basename. */
+  const [challengeSource, setChallengeSource] = useState(DEFAULT_CHALLENGE_FILE);
 
   const bundledChallengeNames = useMemo(() => listBundledChallengeFilenames(), []);
 
@@ -173,54 +169,6 @@ export function PrizesPage() {
       /* ignore */
     }
   }, [playerGuid, playerEmail, apiBaseUrl]);
-
-  const loadDaily = useCallback(async () => {
-    setLoadError(null);
-    if (!headers) {
-      setLoadError(CREDENTIALS_MISSING_MSG);
-      return;
-    }
-    persistCreds();
-    setLoading(true);
-    try {
-      const rootUrl = restBaseForRequests(apiBaseUrl);
-      const mapRoot = await fetchGetPlanetsAndRoutesRoot(rootUrl, headers);
-      const pr = mapBlobToPlanetsRoutes(mapRoot);
-      setPlanets(pr.planets);
-      setRoutes(pr.routes);
-
-      const list = await fetchGetDailyChallengeList(rootUrl, headers);
-      const entries: Record<string, unknown>[] = [];
-      for (const raw of list) {
-        if (raw != null && typeof raw === "object" && !Array.isArray(raw)) {
-          entries.push(raw as Record<string, unknown>);
-        }
-      }
-      entries.sort((a, b) => rawChallengeSortKey(a) - rawChallengeSortKey(b));
-      if (entries.length === 0) {
-        setChallenges([]);
-        setSortedRawRows([]);
-        setLoadError("GetDailyChallenge returned no usable challenge rows.");
-        return;
-      }
-      setSortedRawRows(entries);
-      setChallenges(entries.map((raw) => recordToChallenge(raw)));
-      setActiveTab(0);
-      setLogText("");
-      setMasterLog(
-        `Loaded ${entries.length} daily challenge(s); map ${pr.planets.length} planets, ${pr.routes.length} routes.`,
-      );
-      setLogError(false);
-    } catch (e) {
-      setChallenges([]);
-      setSortedRawRows([]);
-      setPlanets([]);
-      setRoutes([]);
-      setLoadError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [apiBaseUrl, headers, persistCreds]);
 
   const loadChallengesFromFile = useCallback(
     async (basename: string) => {
@@ -275,17 +223,16 @@ export function PrizesPage() {
   );
 
   const reloadCurrentSource = useCallback(() => {
-    if (challengeSource === "daily") return void loadDaily();
     return void loadChallengesFromFile(challengeSource);
-  }, [challengeSource, loadDaily, loadChallengesFromFile]);
+  }, [challengeSource, loadChallengesFromFile]);
 
   const autoLoadOnce = useRef(false);
   useEffect(() => {
     if (autoLoadOnce.current) return;
     if (!headers) return;
     autoLoadOnce.current = true;
-    void loadDaily();
-  }, [loadDaily, headers]);
+    void loadChallengesFromFile(challengeSource);
+  }, [challengeSource, loadChallengesFromFile, headers]);
 
   const current = challenges[activeTab];
   const currentRaw = sortedRawRows[activeTab];
@@ -294,7 +241,7 @@ export function PrizesPage() {
   const runSolveCore = useCallback(
     (ch: ChallengeFields) => {
       if (planets.length === 0) {
-        throw new Error("Load daily data first.");
+        throw new Error("Load map and challenges first.");
       }
       const input = challengeToSolveInput(planets, routes, ch);
       return solve(input);
@@ -421,10 +368,7 @@ export function PrizesPage() {
   const runMasterBatch = async (mode: "solve" | "coaxium" | "submit") => {
     if (!headers || challenges.length === 0 || planets.length === 0) return;
     if (mode === "submit") {
-      const srcLabel =
-        challengeSource === "daily"
-          ? "server daily challenges"
-          : `bundled file "${challengeSource}"`;
+      const srcLabel = `bundled file "${challengeSource}"`;
       const ok = window.confirm(
         `Solve each challenge in ascending ChallengeId order and call SubmitChallengeSolution for each (skipping IsFinished rows)?\n\nChallenge source: ${srcLabel}.`,
       );
@@ -579,7 +523,7 @@ export function PrizesPage() {
           <span className="dash-title-star">Star</span>
           <span className="dash-title-delivery">Delivery</span>
         </h1>
-        <div className="dash-sub">Galaxy logistics Â· Daily challenge Â· Prizes</div>
+        <div className="dash-sub">Galaxy logistics Â· Challenges Â· Prizes</div>
       </header>
 
       {loadError ? <div className="dash-err">{loadError}</div> : null}
@@ -605,16 +549,10 @@ export function PrizesPage() {
               disabled={loading}
               onChange={(e) => {
                 const v = e.target.value;
-                if (v === "daily") {
-                  setChallengeSource("daily");
-                  void loadDaily();
-                } else {
-                  setChallengeSource(v);
-                  void loadChallengesFromFile(v);
-                }
+                setChallengeSource(v);
+                void loadChallengesFromFile(v);
               }}
             >
-              <option value="daily">Daily Challenges</option>
               {bundledChallengeNames.map((name) => (
                 <option key={name} value={name}>
                   {name}
@@ -642,9 +580,7 @@ export function PrizesPage() {
 
       {loading && !hasData ? (
         <div className="dash-loading">
-          {challengeSource === "daily"
-            ? "Loading map and missions from the APIâ€¦"
-            : `Loading map from the API and challenges from ${challengeSource}â€¦`}
+          {`Loading map from the API and challenges from ${challengeSource}...`}
         </div>
       ) : null}
 
@@ -666,7 +602,7 @@ export function PrizesPage() {
           </div>
 
           <div className="dash-toolbar dash-master">
-            <span className="dash-master-label">All challenges (ascending ChallengeId, like CLI --daily-api)</span>
+            <span className="dash-master-label">All challenges (ascending ChallengeId)</span>
             <button
               type="button"
               className="btn-act"
@@ -705,7 +641,7 @@ export function PrizesPage() {
             </div>
             <div className="dash-stat">
               <div className="dash-stat-n">{challenges.length}</div>
-              <div className="dash-stat-l">{challengeSource === "daily" ? "Daily challenges" : "File challenges"}</div>
+              <div className="dash-stat-l">File challenges</div>
             </div>
           </div>
 
@@ -762,7 +698,7 @@ export function PrizesPage() {
           </div>
 
           <div className="dash-missions-head">
-            {challengeSource === "daily" ? "Todayâ€™s missions" : `File missions Â· ${challengeSource}`}
+            {`Missions · ${challengeSource}`}
           </div>
           <div className="tabs-dash" role="tablist">
             {challenges.map((ch, i) => {
@@ -788,11 +724,7 @@ export function PrizesPage() {
           {current ? (
             <article className="dash-mission-card">
               <div className="dash-mission-kicker">
-                {challengeSource === "daily" ? (
-                  <>â€” Todayâ€™s mission Â· {monthDay(new Date()).toUpperCase()}</>
-                ) : (
-                  <>â€” From file Â· {escapeHtml(challengeSource)}</>
-                )}
+                <>— From file · {escapeHtml(challengeSource)}</>
               </div>
               <h2 className="dash-mission-title">{escapeHtml(tabLabel(current, activeTab))}</h2>
               <div className="dash-mission-desc">
@@ -846,8 +778,8 @@ export function PrizesPage() {
         </>
       ) : !loading ? (
         <div className="dash-empty">
-          Choose <strong>Daily Challenges</strong> or a JSON file, then use <strong>Load / reload</strong> (or wait for the initial
-          load). The map always comes from the API; file options replace only the challenge list.
+          Choose a challenge JSON file, then use <strong>Load / reload</strong> (or wait for the initial load). The map
+          always comes from the API; the file supplies the challenge list.
         </div>
       ) : null}
     </div>

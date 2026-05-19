@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="920" height="780" viewBox="0 0 920 780" role="img" aria-label="Difference between metric ordering and realized route">
+  <rect width="920" height="780" fill="#ffffff"/>
+
+  <defs>
+    <marker id="dash-arr" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 Z" fill="#64748b"/>
+    </marker>
+    <marker id="hop-arr" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto">
+      <path d="M0,0 L7,3.5 L0,7 Z" fill="#ea580c"/>
+    </marker>
+  </defs>
+
+  <!-- Title -->
+  <text x="460" y="36" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="20" font-weight="700" fill="#0f172a">Same challenge, two pictures</text>
+  <text x="460" y="58" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="14" fill="#64748b">The solver first picks an order of key planets. Then it builds the long route the game actually scores.</text>
+
+  <!-- ========== A. METRIC ========== -->
+  <rect x="32" y="78" width="856" height="210" rx="12" fill="#eff6ff" stroke="#3b82f6" stroke-width="2"/>
+  <rect x="32" y="78" width="856" height="36" rx="12" fill="#3b82f6"/>
+  <rect x="32" y="102" width="856" height="12" fill="#3b82f6"/>
+  <text x="460" y="102" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="15" font-weight="700" fill="#ffffff">A. METRIC VIEW - planning only (not sent to the API)</text>
+
+  <text x="460" y="132" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="12" fill="#1e40af">Only challenge planets. Dashed lines = cheap estimates to compare orders.</text>
+
+  <text x="120" y="168" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#15803d">Start</text>
+  <circle cx="120" cy="196" r="24" fill="#22c55e" stroke="#15803d" stroke-width="2"/>
+  <text x="120" y="203" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#fff">S</text>
+
+  <text x="310" y="168" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#1d4ed8">Mandatory</text>
+  <circle cx="310" cy="196" r="24" fill="#3b82f6" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="310" y="203" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#fff">A</text>
+
+  <text x="500" y="168" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#1d4ed8">Mandatory</text>
+  <circle cx="500" cy="196" r="24" fill="#3b82f6" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="500" y="203" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#fff">B</text>
+
+  <text x="690" y="168" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#a16207">Bonus</text>
+  <circle cx="690" cy="196" r="24" fill="#eab308" stroke="#ca8a04" stroke-width="2"/>
+  <text x="690" y="203" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#1e293b">C</text>
+
+  <text x="800" y="168" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#15803d">Back</text>
+  <circle cx="800" cy="196" r="24" fill="#22c55e" stroke="#15803d" stroke-width="2"/>
+  <text x="800" y="203" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="15" font-weight="700" fill="#fff">S</text>
+
+  <line x1="146" y1="196" x2="284" y2="196" stroke="#64748b" stroke-width="2.5" stroke-dasharray="9 6" marker-end="url(#dash-arr)"/>
+  <line x1="336" y1="196" x2="474" y2="196" stroke="#64748b" stroke-width="2.5" stroke-dasharray="9 6" marker-end="url(#dash-arr)"/>
+  <line x1="526" y1="196" x2="664" y2="196" stroke="#64748b" stroke-width="2.5" stroke-dasharray="9 6" marker-end="url(#dash-arr)"/>
+  <line x1="716" y1="196" x2="774" y2="196" stroke="#64748b" stroke-width="2.5" stroke-dasharray="9 6" marker-end="url(#dash-arr)"/>
+
+  <text x="460" y="248" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="12" font-weight="600" fill="#475569">Chosen order: S &#8594; A &#8594; B &#8594; C &#8594; S</text>
+  <text x="460" y="268" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" fill="#94a3b8">(other planets on the map are hidden in this sketch)</text>
+
+  <!-- Bridge -->
+  <rect x="380" y="302" width="160" height="40" rx="20" fill="#0284c7"/>
+  <text x="460" y="328" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="14" font-weight="700" fill="#ffffff">then REALIZE</text>
+
+  <!-- ========== B. REAL GRAPH (redesigned) ========== -->
+  <rect x="32" y="358" width="856" height="388" rx="12" fill="#fff7ed" stroke="#ea580c" stroke-width="2"/>
+  <rect x="32" y="358" width="856" height="40" rx="12" fill="#ea580c"/>
+  <rect x="32" y="386" width="856" height="12" fill="#ea580c"/>
+  <text x="460" y="386" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="15" font-weight="700" fill="#ffffff">B. REAL GRAPH - the route you submit (API counts every hop)</text>
+
+  <text x="460" y="418" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="13" fill="#9a3412">Same order as above, split into four legs. Each leg is stitched from shortest paths on the full map.</text>
+
+  <!-- Legend -->
+  <rect x="56" y="432" width="808" height="36" rx="8" fill="#ffffff" stroke="#fed7aa"/>
+  <circle cx="88" cy="450" r="14" fill="#22c55e" stroke="#15803d" stroke-width="1.5"/>
+  <text x="88" y="455" text-anchor="middle" font-size="11" font-weight="700" fill="#fff">S</text>
+  <text x="118" y="455" font-family="Segoe UI, sans-serif" font-size="11" fill="#475569">= challenge planet</text>
+
+  <rect x="250" y="438" width="100" height="24" rx="12" fill="#e2e8f0" stroke="#94a3b8"/>
+  <text x="300" y="455" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="#475569">via N planets</text>
+  <text x="368" y="455" font-family="Segoe UI, sans-serif" font-size="11" fill="#475569">= extra planets flown through</text>
+
+  <line x1="560" y1="450" x2="600" y2="450" stroke="#ea580c" stroke-width="4" marker-end="url(#hop-arr)"/>
+  <text x="618" y="455" font-family="Segoe UI, sans-serif" font-size="11" fill="#475569">= one hop (fuel added)</text>
+
+  <!-- Helper: draw a leg row -->
+  <!-- Leg 1 -->
+  <rect x="48" y="484" width="824" height="56" rx="8" fill="#ffffff" stroke="#fdba74" stroke-width="1"/>
+  <text x="68" y="508" font-family="Segoe UI, sans-serif" font-size="11" font-weight="700" fill="#9a3412">Leg 1</text>
+  <text x="68" y="524" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748b">S &#8594; A</text>
+
+  <circle cx="200" cy="512" r="20" fill="#22c55e" stroke="#15803d" stroke-width="2"/>
+  <text x="200" y="518" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">S</text>
+  <line x1="222" y1="512" x2="268" y2="512" stroke="#ea580c" stroke-width="3.5" marker-end="url(#hop-arr)"/>
+  <rect x="272" y="496" width="120" height="32" rx="16" fill="#f1f5f9" stroke="#94a3b8" stroke-dasharray="4 3"/>
+  <text x="332" y="510" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#475569">via 2 planets</text>
+  <text x="332" y="522" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9" fill="#94a3b8">p1, p2</text>
+  <line x1="394" y1="512" x2="440" y2="512" stroke="#ea580c" stroke-width="3.5" marker-end="url(#hop-arr)"/>
+  <circle cx="462" cy="512" r="20" fill="#3b82f6" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="462" y="518" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">A</text>
+  <text x="720" y="516" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="#9a3412">3 hops on this leg</text>
+
+  <!-- Leg 2 -->
+  <rect x="48" y="548" width="824" height="56" rx="8" fill="#ffffff" stroke="#fdba74" stroke-width="1"/>
+  <text x="68" y="572" font-family="Segoe UI, sans-serif" font-size="11" font-weight="700" fill="#9a3412">Leg 2</text>
+  <text x="68" y="588" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748b">A &#8594; B</text>
+
+  <circle cx="200" cy="576" r="20" fill="#3b82f6" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="200" y="582" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">A</text>
+  <line x1="222" y1="576" x2="268" y2="576" stroke="#ea580c" stroke-width="3.5" marker-end="url(#hop-arr)"/>
+  <rect x="272" y="560" width="100" height="32" rx="16" fill="#f1f5f9" stroke="#94a3b8" stroke-dasharray="4 3"/>
+  <text x="322" y="574" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#475569">via 1 planet</text>
+  <text x="322" y="586" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9" fill="#94a3b8">p3</text>
+  <line x1="374" y1="576" x2="420" y2="576" stroke="#ea580c" stroke-width="3.5" marker-end="url(#hop-arr)"/>
+  <circle cx="442" cy="576" r="20" fill="#3b82f6" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="442" y="582" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">B</text>
+  <text x="720" y="580" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="#9a3412">2 hops on this leg</text>
+
+  <!-- Leg 3 -->
+  <rect x="48" y="612" width="824" height="56" rx="8" fill="#ffffff" stroke="#fdba74" stroke-width="1"/>
+  <text x="68" y="636" font-family="Segoe UI, sans-serif" font-size="11" font-weight="700" fill="#9a3412">Leg 3</text>
+  <text x="68" y="652" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748b">B &#8594; C</text>
+
+  <circle cx="200" cy="640" r="20" fill="#3b82f6" stroke="#1d4ed8" stroke-width="2"/>
+  <text x="200" y="646" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">B</text>
+  <line x1="222" y1="640" x2="268" y2="640" stroke="#ea580c" stroke-width="3.5" marker-end="url(#hop-arr)"/>
+  <rect x="272" y="624" width="100" height="32" rx="16" fill="#f1f5f9" stroke="#94a3b8" stroke-dasharray="4 3"/>
+  <text x="322" y="638" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#475569">via 1 planet</text>
+  <text x="322" y="650" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9" fill="#94a3b8">p4</text>
+  <line x1="374" y1="640" x2="420" y2="640" stroke="#ea580c" stroke-width="3.5" marker-end="url(#hop-arr)"/>
+  <circle cx="442" cy="640" r="18" fill="#eab308" stroke="#ca8a04" stroke-width="2"/>
+  <text x="442" y="646" text-anchor="middle" font-size="12" font-weight="700" fill="#1e293b">C</text>
+  <text x="720" y="644" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="#9a3412">2 hops on this leg</text>
+
+  <!-- Leg 4 -->
+  <rect x="48" y="676" width="824" height="56" rx="8" fill="#ffffff" stroke="#fdba74" stroke-width="1"/>
+  <text x="68" y="700" font-family="Segoe UI, sans-serif" font-size="11" font-weight="700" fill="#9a3412">Leg 4</text>
+  <text x="68" y="716" font-family="Segoe UI, sans-serif" font-size="10" fill="#64748b">C &#8594; S</text>
+
+  <circle cx="200" cy="704" r="18" fill="#eab308" stroke="#ca8a04" stroke-width="2"/>
+  <text x="200" y="710" text-anchor="middle" font-size="12" font-weight="700" fill="#1e293b">C</text>
+  <line x1="220" y1="704" x2="266" y2="704" stroke="#ea580c" stroke-width="3.5" marker-end="url(#hop-arr)"/>
+  <rect x="270" y="688" width="120" height="32" rx="16" fill="#f1f5f9" stroke="#94a3b8" stroke-dasharray="4 3"/>
+  <text x="330" y="702" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="11" font-weight="600" fill="#475569">via 2 planets</text>
+  <text x="330" y="714" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="9" fill="#94a3b8">p5, p6</text>
+  <line x1="392" y1="704" x2="438" y2="704" stroke="#ea580c" stroke-width="3.5" marker-end="url(#hop-arr)"/>
+  <circle cx="460" cy="704" r="20" fill="#22c55e" stroke="#15803d" stroke-width="2"/>
+  <text x="460" y="710" text-anchor="middle" font-size="13" font-weight="700" fill="#fff">S</text>
+  <text x="720" y="708" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="10" fill="#9a3412">3 hops on this leg</text>
+
+  <text x="460" y="752" text-anchor="middle" font-family="Segoe UI, sans-serif" font-size="12" font-weight="600" fill="#9a3412">Full submission = Leg 1 + Leg 2 + Leg 3 + Leg 4 (10 hops total, not 4 dashed shortcuts)</text>
+
+  <text x="460" y="776" text-anchor="middle" font-family="Segoe UI, system-ui, sans-serif" font-size="12" font-weight="600" fill="#0f172a">Ordering: &quot;in what sequence?&quot; &#183; Realization: &quot;which planets on each leg?&quot;</text>
+</svg>
